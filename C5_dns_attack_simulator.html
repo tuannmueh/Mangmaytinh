@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô Phỏng & Trực Quan Hóa An Toàn DNS (DNS Attack Visualizer)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f6ff',
+                            100: '#e0edff',
+                            500: '#2563eb',
+                            600: '#1d4ed8',
+                            700: '#1e40af',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+        /* Tùy chỉnh thanh cuộn nhẹ nhàng */
+        ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* Hiệu ứng xung nhịp quanh Node đang hoạt động */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.9; }
+            50% { transform: scale(1.18); opacity: 0.3; }
+            100% { transform: scale(0.95); opacity: 0.9; }
+        }
+        .active-node-ring {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+        .card-white {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
+
+    <!-- Header Trang web -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-blue-600 rounded-xl shadow-md shadow-blue-500/20 text-white">
+                    <i class="fa-solid fa-shield-halved text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-slate-800 leading-tight">Mô Phỏng Trực Quan Tấn Công & An Toàn DNS</h1>
+                    <p class="text-xs text-slate-500 font-medium">Interactive DNS Security Attack Visualizer & Simulator</p>
+                </div>
+            </div>
+            <div class="hidden md:flex items-center space-x-2 text-xs bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 font-semibold">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Chế độ trải nghiệm Light Mode</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Thanh Điều Hướng Các Kịch Bản Tấn Công -->
+    <div class="bg-slate-100/80 border-b border-slate-200 sticky top-16 z-40 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <nav class="flex space-x-2 overflow-x-auto py-2.5 scrollbar-none" id="tabContainer">
+                <button onclick="switchTab('amp')" id="tab-amp" class="tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 bg-blue-600 text-white shadow-md shadow-blue-600/20 whitespace-nowrap">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>1. DoS / Khuếch Đại DNS</span>
+                </button>
+                <button onclick="switchTab('poison')" id="tab-poison" class="tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-white transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-skull-crossbones"></i>
+                    <span>2. Giả Mạo & Đầu Độc Cache</span>
+                </button>
+                <button onclick="switchTab('hijack')" id="tab-hijack" class="tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-white transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-user-ninja"></i>
+                    <span>3. Chiếm Quyền DNS Hijacking</span>
+                </button>
+                <button onclick="switchTab('tunnel')" id="tab-tunnel" class="tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-white transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-user-secret"></i>
+                    <span>4. Đường Hầm DNS Tunneling</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Khối Nội Dung Chính -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Khối Giới Thiệu Kịch Bản -->
+        <div id="scenarioHeader" class="card-white p-5 sm:p-6 rounded-2xl relative overflow-hidden">
+            <div id="headerContent" class="relative z-10">
+                <!-- Nội dung được nạp động từ JavaScript -->
+            </div>
+            <div class="absolute -right-12 -top-12 w-48 h-48 bg-blue-500/5 rounded-full blur-2xl pointer-events-none"></div>
+        </div>
+
+        <!-- Khối Canvas Đồ Họa Mô Phỏng Tương Tác -->
+        <div class="card-white rounded-2xl p-4 sm:p-6 relative min-h-[480px] flex flex-col justify-between">
+            
+            <!-- Thanh Công Cụ Điều Khiển Bước Mô Phỏng -->
+            <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <!-- Đếm bước và chỉ số bước -->
+                <div class="flex items-center space-x-3">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Các bước:</span>
+                    <div id="stepBadges" class="flex items-center space-x-1.5">
+                        <!-- Nút chỉ số từng bước -->
+                    </div>
+                </div>
+
+                <!-- Các thông số tùy chỉnh nếu có -->
+                <div id="customParams" class="flex items-center space-x-4 text-xs">
+                    <!-- Dynamic Controls -->
+                </div>
+
+                <!-- Cụm Nút Điều Khiển Chạy Mô Phỏng -->
+                <div class="flex items-center space-x-2">
+                    <button id="btnPrev" onclick="prevStep()" class="p-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 border border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-left"></i>
+                        <span>Quay lại</span>
+                    </button>
+                    <button id="btnPlay" onclick="toggleAutoPlay()" class="p-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-md shadow-blue-600/20">
+                        <i id="playIcon" class="fa-solid fa-play"></i>
+                        <span id="playText">Tự động chạy</span>
+                    </button>
+                    <button id="btnNext" onclick="nextStep()" class="p-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 border border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <span>Bước tiếp</span>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                    <button id="btnReset" onclick="resetCurrentScenario()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition border border-slate-200" title="Đặt lại mô phỏng">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Khung Đồ Họa SVG / Canvas Tương Tác -->
+            <div class="relative w-full my-4 flex-1 min-h-[300px] flex items-center justify-center bg-slate-50/80 rounded-xl border border-slate-200/80 overflow-hidden" id="canvasContainer">
+                <svg id="simSvg" class="w-full h-full min-h-[320px]" viewBox="0 0 900 360" preserveAspectRatio="xMidYMid meet">
+                    <!-- Định nghĩa SVG Marker (Mũi tên, Hiệu ứng Glow) -->
+                    <defs>
+                        <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+                        </marker>
+                        <marker id="arrow-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626" />
+                        </marker>
+                        <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                            <path d="M 0 0 L 10 5 L 0 10 z" fill="#16a34a" />
+                        </marker>
+                        <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="3" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                    </defs>
+
+                    <!-- Lớp Đường Liên Kết (Links) -->
+                    <g id="svgLinks"></g>
+
+                    <!-- Lớp Gói Tin Di Chuyển (Packets) -->
+                    <g id="svgPackets"></g>
+
+                    <!-- Lớp Các Nút Hệ Thống (Nodes) -->
+                    <g id="svgNodes"></g>
+                </svg>
+            </div>
+
+            <!-- Chi Tiết Bước Kỹ Thuật & Nhật Ký Thời Gian Thực -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-2">
+                <!-- Khối Giải Thích Chi Tiết Bước -->
+                <div class="lg:col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center space-x-2 text-blue-600 font-bold text-sm mb-1.5">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <span id="stepTitle">Tiêu đề bước...</span>
+                        </div>
+                        <p id="stepDescription" class="text-slate-700 text-xs sm:text-sm leading-relaxed">
+                            Nội dung mô tả từng bước thực hiện kỹ thuật sẽ hiển thị chi tiết tại đây...
+                        </p>
+                    </div>
+                    <div id="stepTechnicalDetail" class="mt-3 pt-2.5 border-t border-slate-200 text-xs text-slate-800 font-mono bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                        <!-- Định dạng gói tin kỹ thuật -->
+                    </div>
+                </div>
+
+                <!-- Khối Bảng Điều Khiển & Trạng Thái Hệ Thống -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3">
+                    <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                        <span>TRẠNG THÁI HỆ THỐNG</span>
+                        <span id="statusTag" class="px-2.5 py-0.5 rounded text-[10px] font-mono bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold">BÌNH THƯỜNG</span>
+                    </h4>
+                    
+                    <div id="metricBox" class="space-y-2 text-xs">
+                        <!-- Chỉ số đo lường sinh động -->
+                    </div>
+
+                    <!-- Khối Hiển Thị Bộ Nhớ Cache DNS -->
+                    <div id="cacheStateVisual" class="hidden text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                        <span class="text-slate-500 block mb-1 font-bold text-[11px] uppercase tracking-wider">Bộ Nhớ Đệm Cache (Resolver):</span>
+                        <div id="cacheRecords" class="font-mono text-[11px] space-y-1.5">
+                            <!-- Bảng bản ghi Cache -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bảng So Sánh Chi Tiết 4 Kiểu Tấn Công DNS -->
+        <div class="card-white rounded-2xl p-6 space-y-4">
+            <h3 class="text-base font-bold text-slate-800 flex items-center space-x-2">
+                <i class="fa-solid fa-table-list text-blue-600"></i>
+                <span>So Sánh Chuẩn Kỹ Thuật 4 Kiểu Tấn Công DNS</span>
+            </h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs text-left text-slate-600 border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase tracking-wider">
+                            <th class="p-3">Loại Tấn Công</th>
+                            <th class="p-3">Mục Tiêu Bảo Mật</th>
+                            <th class="p-3">Cơ Chế Kỹ Thuật Cốt Lõi</th>
+                            <th class="p-3">Thành Phần Bị Ảnh Hưởng</th>
+                            <th class="p-3">Giải Pháp Phòng Thủ Chuẩn</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 font-medium">
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-rose-600">1. DoS / Khuếch Đại DNS</td>
+                            <td class="p-3">Làm ngưng trệ dịch vụ (Tính sẵn sàng - Availability)</td>
+                            <td class="p-3">Giả mạo IP nạn nhân + Gửi truy vấn nhỏ tới Open Resolver để thu về phản hồi khổng lồ (EDNS0 x50 lần)</td>
+                            <td class="p-3">Băng thông mạng & Máy chủ nạn nhân</td>
+                            <td class="p-3">Tắt Open Resolver public, cấu hình Response Rate Limiting (RRL), triển khai BCP 38 / uRPF chống giả mạo IP</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-amber-600">2. Cache Poisoning (Kaminsky)</td>
+                            <td class="p-3">Đánh cắp thông tin / Lừa đảo (Tính toàn vẹn - Integrity)</td>
+                            <td class="p-3">Gửi truy vấn subdomains ngẫu nhiên, tràn ngập phản hồi giả đoán đúng ngẫu nhiên cả TxID (16-bit) và Source Port UDP (16-bit)</td>
+                            <td class="p-3">Bộ nhớ đệm (Cache) của Recursive Resolver</td>
+                            <td class="p-3">Triển khai chữ ký số **DNSSEC**, ngẫu nhiên hóa Source Port (Kaminsky Patch), cập nhật Resolver software</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-purple-600">3. DNS Hijacking</td>
+                            <td class="p-3">Chuyển hướng lưu lượng lâu dài (Kiểm soát cấu hình)</td>
+                            <td class="p-3">Xâm nhập tài khoản Registrar, hack Router Wi-Fi hoặc chiếm quyền Server DNS chính thức để sửa bản ghi A/NS gốc</td>
+                            <td class="p-3">Tài khoản Registrar, Router, Máy chủ Nameserver gốc</td>
+                            <td class="p-3">Xác thực 2 lớp (MFA), Khóa tên miền (Registry Lock), Bảo mật tài khoản quản trị, Giám sát bản ghi</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-cyan-600">4. DNS Tunneling</td>
+                            <td class="p-3">Đánh cắp dữ liệu / Kênh C2 ẩn nấp (Lạm dụng giao thức)</td>
+                            <td class="p-3">Mã hóa dữ liệu nhạy cảm (Base64/Hex) chèn vào Subdomain truy vấn (`[Payload].attacker.com`) gửi qua UDP port 53</td>
+                            <td class="p-3">Tường lửa kiểm soát mạng (Firewall / IDS / IPS)</td>
+                            <td class="p-3">Phân tích Entropy chuỗi tên miền, Kiểm soát tần suất truy vấn DNS Egress, Giám sát mẫu dữ liệu bất thường</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Khối Bài Tập Trắc Nghiệm Củng Cố Kiến Thức -->
+        <div class="card-white rounded-2xl p-6 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-graduation-cap text-emerald-600"></i>
+                    <span>Bài Tập Trắc Nghiệm Củng Cố Kiến Thức</span>
+                </h3>
+                <span id="quizScore" class="text-xs font-bold px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">Điểm số: 0/5</span>
+            </div>
+
+            <div id="quizContainer" class="space-y-4">
+                <!-- Nội dung bài tập được nạp động -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer Trang web -->
+    <footer class="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500 font-medium">
+        <div class="max-w-7xl mx-auto px-4">
+            <p>Ứng dụng mô phỏng giáo dục an toàn thông tin mạng — Thiết kế chuẩn hóa khái niệm bảo mật DNS cho học tập & nghiên cứu.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Xử Lý Toàn Bộ Logic Mô Phỏng -->
+    <script>
+        // =========================================================================
+        // DỮ LIỆU CẤU TRÚC CHI TIẾT 4 KỊCH BẢN TẤN CÔNG DNS (SỬA CHUẨN KỸ THUẬT & LỖI)
+        // =========================================================================
+
+        const SCENARIOS = {
+            amp: {
+                id: 'amp',
+                title: '1. Tấn Công Từ Chối Dịch Vụ (DoS / DDoS) & Khuếch Đại DNS',
+                badge: 'TẤN CÔNG BĂNG THÔNG',
+                badgeColor: 'bg-rose-100 text-rose-700 border-rose-300',
+                headerDesc: 'Tấn công khuếch đại DNS (DNS Amplification) khai thác các máy chủ **Open Resolver** mở công khai và kỹ thuật **giả mạo địa chỉ IP nguồn (IP Spoofing)**. Kẻ tấn công gửi truy vấn nhỏ (~60 bytes) nhưng yêu cầu phản hồi EDNS0 lớn (~3000+ bytes), làm dội một lưu lượng băng thông khổng lồ về máy chủ nạn nhân.',
+                nodes: [
+                    { id: 'attacker', name: 'Kẻ Tấn Công / Botnet', icon: 'fa-user-ninja', color: '#dc2626', x: 120, y: 180, type: 'attacker' },
+                    { id: 'resolver', name: 'Open DNS Resolver', icon: 'fa-server', color: '#2563eb', x: 450, y: 100, type: 'server' },
+                    { id: 'victim', name: 'Máy Chủ Nạn Nhân', icon: 'fa-building-shield', color: '#16a34a', x: 780, y: 180, type: 'target' }
+                ],
+                links: [
+                    { from: 'attacker', to: 'resolver', label: '1. Truy vấn nhỏ (ANY/TXT)', type: 'normal' },
+                    { from: 'resolver', to: 'victim', label: '2. Phản hồi EDNS0 khổng lồ', type: 'heavy' }
+                ],
+                botnetCount: 500,
+                steps: [
+                    {
+                        title: 'Bước 1: Giả mạo địa chỉ IP nguồn (IP Spoofing)',
+                        desc: 'Kẻ tấn công điều khiển mạng máy tính ma (Botnet) tạo các gói tin UDP DNS Query (loại bản ghi ANY hoặc TXT). Trong phần Header của gói tin UDP, địa chỉ IP nguồn (Source IP) bị thay thế hoàn toàn bằng địa chỉ IP của Máy Chủ Nạn Nhân.',
+                        tech: 'Cấu trúc gói tin gửi đi: [Source IP: 198.51.100.45 (IP Nạn Nhân)] -> [Destination IP: 8.8.8.8 (Open Resolver)] | Payload UDP: EDNS0 Query (Kích thước: 60 Bytes)',
+                        activeNodes: ['attacker'],
+                        activeLinks: [],
+                        packetAnim: null,
+                        status: { text: 'TẠO TRUY VẤN GIẢ MẠO', color: 'text-amber-800 bg-amber-100 border-amber-300' },
+                        metrics: [
+                            { label: 'Kích thước truy vấn', val: '60 Bytes' },
+                            { label: 'Kích thước phản hồi', val: '0 Bytes' },
+                            { label: 'Tải băng thông nạn nhân', val: '0%' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 2: Gửi hàng loạt truy vấn tới các Open Resolver công khai',
+                        desc: 'Mạng lưới Botnet gửi đồng loạt các truy vấn DNS nhỏ tới danh sách hàng ngàn máy chủ Open DNS Resolver mở trên Internet.',
+                        tech: 'Lưu lượng truy vấn: 500 Botnets x 100 truy vấn/giây = 50,000 requests/s | Lưu lượng phía kẻ tấn công cực nhỏ (~3 MB/s)',
+                        activeNodes: ['attacker', 'resolver'],
+                        activeLinks: [{ from: 'attacker', to: 'resolver', color: '#d97706', pulse: true }],
+                        packetAnim: { from: 'attacker', to: 'resolver', color: '#d97706', size: 5, count: 6 },
+                        status: { text: 'GỬI TRUY VẤN TẬP TRUNG', color: 'text-amber-800 bg-amber-100 border-amber-300' },
+                        metrics: [
+                            { label: 'Kích thước truy vấn', val: '60 Bytes / req' },
+                            { label: 'Tốc độ yêu cầu', val: '50,000 req/s' },
+                            { label: 'Tải băng thông nạn nhân', val: '5%' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 3: Máy chủ Open Resolver xử lý & phản hồi gói tin EDNS0 lớn',
+                        desc: 'Open Resolver tin rằng truy vấn này xuất phát từ Máy Chủ Nạn Nhân (do IP nguồn đã bị giả mạo). Nó tra cứu bản ghi đầy đủ (kèm chữ ký DNSSEC/TXT) với dung lượng gấp 50 lần bản tin hỏi.',
+                        tech: 'Hệ số khuếch đại (Amplification Factor): 3,000 Bytes / 60 Bytes = 50X | Cơ chế EDNS0 cho phép gói tin UDP vượt hạn mức 512 Bytes truyền thống.',
+                        activeNodes: ['resolver'],
+                        activeLinks: [],
+                        packetAnim: null,
+                        status: { text: 'KHUẾCH ĐẠI GÓI TIN (50X)', color: 'text-rose-800 bg-rose-100 border-rose-300' },
+                        metrics: [
+                            { label: 'Kích thước truy vấn', val: '60 Bytes' },
+                            { label: 'Kích thước phản hồi', val: '3,000 Bytes (x50)' },
+                            { label: 'Tải băng thông nạn nhân', val: '25%' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 4: Bão dữ liệu gây nghẽn băng thông & từ chối dịch vụ (DDoS)',
+                        desc: 'Hàng ngàn phản hồi dung lượng khổng lồ đồng loạt đổ dồn về IP nạn nhân. Băng thông đường truyền bị chiếm trọn, máy chủ quá tải CPU và ngưng phục vụ người dùng hợp lệ.',
+                        tech: 'Lưu lượng dội về nạn nhân: 50,000 req/s x 3,000 Bytes = 1.2 Gbps! Máy chủ nạn nhân cạn kiệt băng thông đường truyền & tràn bộ đệm socket.',
+                        activeNodes: ['resolver', 'victim'],
+                        activeLinks: [{ from: 'resolver', to: 'victim', color: '#dc2626', pulse: true }],
+                        packetAnim: { from: 'resolver', to: 'victim', color: '#dc2626', size: 9, count: 12 },
+                        status: { text: 'NẠN NHÂN TÊ LIỆT (DDoS)', color: 'text-rose-800 bg-rose-200 border-rose-400' },
+                        metrics: [
+                            { label: 'Lưu lượng dội về', val: '1.2 Gbps (Quá tải)' },
+                            { label: 'Tỷ lệ mất gói (Drop Rate)', val: '98.5%' },
+                            { label: 'Tải băng thông nạn nhân', val: '100% (TRÀN BĂNG THÔNG)' }
+                        ]
+                    }
+                ]
+            },
+
+            poison: {
+                id: 'poison',
+                title: '2. Giả Mạo DNS & Đầu Độc Bộ Nhớ Đệm (Kaminsky Cache Poisoning)',
+                badge: 'TẤN CÔNG BỘ NHỚ ĐỆM',
+                badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
+                headerDesc: 'Kẻ tấn công chèn bản ghi IP giả mạo vào **bộ nhớ đệm (Cache)** của Recursive Resolver bằng kỹ thuật Kaminsky. Để vượt qua cơ chế bảo vệ, kẻ tấn công hỏi liên tục các **Subdomain ngẫu nhiên** kết hợp bắn hàng loạt câu trả lời giả nhằm đoán đúng cả **Transaction ID (16-bit)** và **Source Port UDP (16-bit)**.',
+                nodes: [
+                    { id: 'user', name: 'Người Dùng Hợp Lệ', icon: 'fa-laptop', color: '#2563eb', x: 120, y: 260, type: 'user' },
+                    { id: 'resolver', name: 'Recursive Resolver', icon: 'fa-server', color: '#d97706', x: 450, y: 180, type: 'server' },
+                    { id: 'auth', name: 'Authoritative NS (bank.com)', icon: 'fa-database', color: '#16a34a', x: 780, y: 100, type: 'server' },
+                    { id: 'attacker', name: 'Kẻ Tấn Công (Attacker)', icon: 'fa-user-ninja', color: '#dc2626', x: 780, y: 280, type: 'attacker' }
+                ],
+                links: [
+                    { from: 'user', to: 'resolver', label: 'Query / Response', type: 'normal' },
+                    { from: 'resolver', to: 'auth', label: 'Recursive Query', type: 'normal' },
+                    { from: 'attacker', to: 'resolver', label: 'Spoofed Fake Answers', type: 'danger' }
+                ],
+                steps: [
+                    {
+                        title: 'Bước 1: Kẻ tấn công kích hoạt truy vấn tên miền con ngẫu nhiên (Subdomain Trick)',
+                        desc: 'Kẻ tấn công gửi yêu cầu tra cứu một subdomain không tồn tại như `sub123.bank.com` tới Recursive Resolver. Kỹ thuật này ép Resolver bắt buộc phải phát sinh một truy vấn mới ra Internet thay vì lấy từ Cache sẵn có.',
+                        tech: 'Kỹ thuật Kaminsky: Yêu cầu tra cứu [sub123.bank.com] -> Ép Resolver thực hiện recursive lookup tới Authoritative NS.',
+                        activeNodes: ['attacker', 'resolver'],
+                        activeLinks: [{ from: 'attacker', to: 'resolver', color: '#d97706', pulse: true }],
+                        packetAnim: { from: 'attacker', to: 'resolver', color: '#d97706', size: 5, count: 2 },
+                        status: { text: 'KÍCH HOẠT TRA CỨU MỚI', color: 'text-blue-800 bg-blue-100 border-blue-300' },
+                        cacheState: { domain: 'bank.com', ip: 'Chưa bị nhiễm', status: 'clean' }
+                    },
+                    {
+                        title: 'Bước 2: Resolver phát truy vấn ra Authoritative Server chính thức',
+                        desc: 'Resolver tạo một gói tin UDP DNS Query mới. Hệ thống tự động sinh ngẫu nhiên một mã **Transaction ID (TxID 16-bit: 0 - 65535)** và một **Source Port UDP (16-bit: 1024 - 65535)** cho phiên tra cứu này.',
+                        tech: 'Outgoing DNS Query: sub123.bank.com | Generated TxID: 0x8F2C (36652) | Source Port UDP: 52140',
+                        activeNodes: ['resolver', 'auth'],
+                        activeLinks: [{ from: 'resolver', to: 'auth', color: '#2563eb', pulse: true }],
+                        packetAnim: { from: 'resolver', to: 'auth', color: '#2563eb', size: 5, count: 2 },
+                        status: { text: 'GỬI TRUY VẤN RA INTERNET', color: 'text-blue-800 bg-blue-100 border-blue-300' },
+                        cacheState: { domain: 'sub123.bank.com', ip: 'Đang chờ kết quả...', status: 'waiting' }
+                    },
+                    {
+                        title: 'Bước 3: Bắn hàng loạt phản hồi giả đoán trước cặp TxID & Source Port (Brute-Force)',
+                        desc: 'Kẻ tấn công lập tức gửi hàng ngàn câu trả lời DNS giả mạo. Mỗi gói tin thử một giá trị TxID và Source Port khác nhau. Trong câu trả lời giả, kẻ tấn công cài cắm bản ghi ủy quyền giả (Authority Section) ghi đè IP Nameserver của toàn bộ domain `bank.com`.',
+                        tech: 'Spoofed Packet Flood: Thử ngẫu nhiên cặp (TxID, Port). Payload giả mạo: [NS ns1.bank.com = 198.51.100.66 (IP Độc hại)]. Không gian mẫu: 65,536 TxIDs x ~60,000 Ports.',
+                        activeNodes: ['attacker', 'resolver'],
+                        activeLinks: [{ from: 'attacker', to: 'resolver', color: '#dc2626', pulse: true }],
+                        packetAnim: { from: 'attacker', to: 'resolver', color: '#dc2626', size: 5, count: 10 },
+                        status: { text: 'ĐOÁN TxID & SOURCE PORT', color: 'text-amber-800 bg-amber-100 border-amber-300' },
+                        cacheState: { domain: 'bank.com', ip: 'Đang bị tấn công đoán ID...', status: 'waiting' }
+                    },
+                    {
+                        title: 'Bước 4: Trùng khớp cặp TxID & Source Port — Bộ nhớ đệm Cache bị đầu độc',
+                        desc: 'Một gói tin giả mạo chứa đúng cặp TxID (`0x8F2C`) và Source Port (`52140`) tới Resolver trước câu trả lời thật. Resolver chấp nhận gói tin và ghi đè địa chỉ IP độc hại của `bank.com` vào Cache. Câu trả lời hợp lệ tới sau bị hủy bỏ.',
+                        tech: 'KHỚP THÀNH CÔNG! TxID: 0x8F2C & Port: 52140 matched. Cache Poisoned: bank.com -> 198.51.100.66 (Phishing IP) | TTL: 86400s',
+                        activeNodes: ['resolver'],
+                        activeLinks: [],
+                        packetAnim: null,
+                        status: { text: 'CACHE BỊ ĐẦU ĐỘC!', color: 'text-rose-800 bg-rose-200 border-rose-400' },
+                        cacheState: { domain: 'bank.com', ip: '198.51.100.66 (IP LỪA ĐẢO)', status: 'poisoned' }
+                    },
+                    {
+                        title: 'Bước 5: Người dùng hợp lệ bị chuyển hướng sang trang web Phishing',
+                        desc: 'Khi người dùng gõ `bank.com`, Resolver trả về IP giả mạo `198.51.100.66` lưu trong Cache. Trình duyệt kết nối tới máy chủ lừa đảo có giao diện giống hệt ngân hàng thật để thu thập thông tin đăng nhập.',
+                        tech: 'User Request: bank.com -> Resolver Cache Answer: 198.51.100.66. Connection redirected to Fake Bank Website.',
+                        activeNodes: ['resolver', 'user'],
+                        activeLinks: [{ from: 'resolver', to: 'user', color: '#dc2626', pulse: true }],
+                        packetAnim: { from: 'resolver', to: 'user', color: '#dc2626', size: 5, count: 3 },
+                        status: { text: 'NẠN NHÂN BỊ LỪA ĐẢO', color: 'text-rose-800 bg-rose-200 border-rose-400' },
+                        cacheState: { domain: 'bank.com', ip: '198.51.100.66 (IP LỪA ĐẢO)', status: 'poisoned' }
+                    }
+                ]
+            },
+
+            hijack: {
+                id: 'hijack',
+                title: '3. Chiếm Quyền Điều Khiển DNS (DNS Hijacking)',
+                badge: 'TẤN CÔNG CẤU HÌNH GỐC',
+                badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
+                headerDesc: 'Khác với Cache Poisoning (đoán gói tin), DNS Hijacking tấn công trực tiếp vào **quyền kiểm soát hệ thống**: Tài khoản nhà đăng ký tên miền (Registrar), Router Wi-Fi của người dùng, hoặc thay đổi bản ghi gốc trên máy chủ Nameserver chính thức.',
+                nodes: [
+                    { id: 'user', name: 'Người Dùng', icon: 'fa-laptop', color: '#2563eb', x: 120, y: 180, type: 'user' },
+                    { id: 'router', name: 'Router Wi-Fi / Local DNS', icon: 'fa-wifi', color: '#9333ea', x: 450, y: 100, type: 'server' },
+                    { id: 'registrar', name: 'Domain Registrar / NS', icon: 'fa-server', color: '#16a34a', x: 450, y: 260, type: 'server' },
+                    { id: 'attacker', name: 'Kẻ Tấn Công', icon: 'fa-user-ninja', color: '#dc2626', x: 780, y: 180, type: 'attacker' }
+                ],
+                links: [
+                    { from: 'user', to: 'router', label: '1. Truy vấn DNS', type: 'normal' },
+                    { from: 'router', to: 'registrar', label: '2. Phân giải upstream', type: 'normal' },
+                    { from: 'attacker', to: 'registrar', label: 'Chiếm đoạt quyền Admin', type: 'danger' }
+                ],
+                steps: [
+                    {
+                        title: 'Bước 1: Xâm nhập tài khoản quản trị Registrar hoặc Router',
+                        desc: 'Kẻ tấn công sử dụng Phishing, lộ mật khẩu hoặc khai thác lỗ hổng phần mềm để xâm nhập tài khoản quản trị tên miền tại nhà cung cấp (Registrar như Cloudflare, GoDaddy) hoặc chiếm quyền Router Wi-Fi cá nhân.',
+                        tech: 'Unauthorized Access: Stolen Credentials or Exploited Firmware Vulnerability -> Granted Admin Access to DNS Portal.',
+                        activeNodes: ['attacker'],
+                        activeLinks: [],
+                        packetAnim: null,
+                        status: { text: 'THÂM NHẬP HỆ THỐNG GỐC', color: 'text-amber-800 bg-amber-100 border-amber-300' },
+                        metrics: [
+                            { label: 'Quyền kiểm soát', val: 'ADMIN REGISTRAR' },
+                            { label: 'Bản ghi A chính thức', val: '203.0.113.15 (IP Thật)' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 2: Sửa đổi trực tiếp cấu hình bản ghi DNS Record gốc',
+                        desc: 'Kẻ tấn công sửa đổi địa chỉ IP của bản ghi `A Record` hoặc `NS Record` chính thức của tên miền `company.com`, trỏ từ IP máy chủ xịn sang IP máy chủ độc hại.',
+                        tech: 'DNS Zone File Updated: [company.com IN A 203.0.113.15] ---> MODIFIED TO ---> [company.com IN A 198.51.100.99]',
+                        activeNodes: ['attacker', 'registrar'],
+                        activeLinks: [{ from: 'attacker', to: 'registrar', color: '#dc2626', pulse: true }],
+                        packetAnim: { from: 'attacker', to: 'registrar', color: '#dc2626', size: 5, count: 3 },
+                        status: { text: 'SỬA CẤU HÌNH BẢN GHI A', color: 'text-purple-800 bg-purple-100 border-purple-300' },
+                        metrics: [
+                            { label: 'Quyền kiểm soát', val: 'ADMIN REGISTRAR' },
+                            { label: 'Bản ghi A bị sửa', val: '198.51.100.99 (Độc hại)' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 3: Mọi truy vấn trên toàn cầu bị trỏ sang địa chỉ IP giả mạo',
+                        desc: 'Do bản ghi gốc đã bị sửa đổi, tất cả máy chủ DNS trên thế giới khi phân giải tên miền đều nhận được câu trả lời độc hại từ chính nguồn hợp pháp.',
+                        tech: 'Authoritative Response: company.com -> 198.51.100.99. All global resolvers return fake IP naturally.',
+                        activeNodes: ['user', 'router', 'registrar'],
+                        activeLinks: [
+                            { from: 'user', to: 'router', color: '#9333ea', pulse: true },
+                            { from: 'router', to: 'registrar', color: '#9333ea', pulse: true }
+                        ],
+                        packetAnim: { from: 'user', to: 'router', color: '#9333ea', size: 5, count: 2 },
+                        status: { text: 'CHIẾM QUYỀN TOÀN CẦU', color: 'text-rose-800 bg-rose-200 border-rose-400' },
+                        metrics: [
+                            { label: 'Trạng thái bản ghi', val: 'CHIẾM QUYỀN (HIJACKED)' },
+                            { label: 'Phạm vi ảnh hưởng', val: 'TOÀN CẦU' }
+                        ]
+                    }
+                ]
+            },
+
+            tunnel: {
+                id: 'tunnel',
+                title: '4. Tạo Đường Hầm DNS (DNS Tunneling)',
+                badge: 'LẠM DỤNG GIAO THỨC',
+                badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-300',
+                headerDesc: 'DNS Tunneling lạm dụng giao thức DNS (vốn mặc định được cho phép qua Tường lửa UDP port 53) để **mã hóa và vận chuyển dữ liệu nhạy cảm** ra bên ngoài hoặc duy trì kênh điều khiển máy tính ma (C2 Server).',
+                nodes: [
+                    { id: 'infected', name: 'Máy Trạm Bị Nhiễm Mã Độc', icon: 'fa-laptop-code', color: '#dc2626', x: 120, y: 180, type: 'attacker' },
+                    { id: 'resolver', name: 'DNS Resolver Doanh Nghiệp', icon: 'fa-server', color: '#2563eb', x: 450, y: 180, type: 'server' },
+                    { id: 'c2', name: 'Máy Chủ C2 Của Attacker', icon: 'fa-user-secret', color: '#0891b2', x: 780, y: 180, type: 'target' }
+                ],
+                links: [
+                    { from: 'infected', to: 'resolver', label: '1. Subdomain chứa chuỗi mã hóa', type: 'normal' },
+                    { from: 'resolver', to: 'c2', label: '2. Chuyển tiếp tới C2 NS', type: 'normal' }
+                ],
+                steps: [
+                    {
+                        title: 'Bước 1: Mã hóa dữ liệu bị đánh cắp vào chuỗi Tên miền con (Subdomain)',
+                        desc: 'Mã độc trên máy trạm thu thập thông tin mật (ví dụ: `password123`), mã hóa thành chuỗi Base64 `cGFzc3dvcmQxMjM=` và ghép thành tên miền tra cứu: `cGFzc3dvcmQxMjM.attacker.com`.',
+                        tech: 'Data Encoding: Secret String -> Base64: cGFzc3dvcmQxMjM | Formatted FQDN: cGFzc3dvcmQxMjM.attacker.com',
+                        activeNodes: ['infected'],
+                        activeLinks: [],
+                        packetAnim: null,
+                        status: { text: 'MÃ HÓA PAYLOAD DỮ LIỆU', color: 'text-amber-800 bg-amber-100 border-amber-300' },
+                        metrics: [
+                            { label: 'Dữ liệu thô', val: 'password123' },
+                            { label: 'Subdomain DNS', val: 'cGFzc3dvcmQxMjM.attacker.com' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 2: Gửi truy vấn DNS qua Resolver nội bộ vượt Tường lửa',
+                        desc: 'Mã độc phát truy vấn tra cứu DNS. Tường lửa mạng thấy đây là gói tin UDP Port 53 hợp lệ nên cho phép đi qua mà không bị ngăn chặn.',
+                        tech: 'Firewall Policy Check: UDP Port 53 Outbound Allowed. Packet passes Deep Packet Inspection (DPI).',
+                        activeNodes: ['infected', 'resolver'],
+                        activeLinks: [{ from: 'infected', to: 'resolver', color: '#0891b2', pulse: true }],
+                        packetAnim: { from: 'infected', to: 'resolver', color: '#0891b2', size: 5, count: 2 },
+                        status: { text: 'VƯỢT TƯỜNG LỬA (PORT 53)', color: 'text-cyan-800 bg-cyan-100 border-cyan-300' },
+                        metrics: [
+                            { label: 'Tường lửa', val: 'CHO QUA (UDP 53)' },
+                            { label: 'Tên miền', val: 'cGFzc3dvcmQxMjM.attacker.com' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 3: Resolver chuyển tiếp truy vấn tới Máy chủ C2 của Kẻ tấn công',
+                        desc: 'Resolver nội bộ không lưu đệm tên miền lạ này, tự động chuyển tiếp tra cứu tới Authoritative Nameserver của `attacker.com` do Kẻ tấn công vận hành.',
+                        tech: 'DNS Iterative Lookup: Internal Resolver -> TLD Server -> Attacker Authoritative C2 Server (198.51.100.88)',
+                        activeNodes: ['resolver', 'c2'],
+                        activeLinks: [{ from: 'resolver', to: 'c2', color: '#0891b2', pulse: true }],
+                        packetAnim: { from: 'resolver', to: 'c2', color: '#0891b2', size: 5, count: 2 },
+                        status: { text: 'CHUYỂN TIẾP MÁY CHỦ C2', color: 'text-cyan-800 bg-cyan-100 border-cyan-300' },
+                        metrics: [
+                            { label: 'Đích đến', val: 'Attacker C2 Nameserver' },
+                            { label: 'Dữ liệu nhận được', val: 'cGFzc3dvcmQxMjM' }
+                        ]
+                    },
+                    {
+                        title: 'Bước 4: Máy chủ C2 giải mã dữ liệu & Phản hồi lệnh điều khiển mới',
+                        desc: 'Máy chủ C2 trích xuất chuỗi subdomain, giải mã giải phóng dữ liệu ban đầu. Đồng thời nó gửi lại phản hồi DNS (dạng bản ghi TXT) chứa lệnh điều khiển mã độc mới trên máy nạn nhân.',
+                        tech: 'Exfiltration Complete! Decoded: "password123". C2 Response TXT Record Payload: "DOWNLOAD_KEYLOGGER_V2"',
+                        activeNodes: ['c2', 'infected'],
+                        activeLinks: [],
+                        packetAnim: { from: 'c2', to: 'infected', color: '#16a34a', size: 5, count: 3 },
+                        status: { text: 'GIẢI MÃ & GỬI LỆNH C2', color: 'text-rose-800 bg-rose-200 border-rose-400' },
+                        metrics: [
+                            { label: 'Dữ liệu thu được', val: 'password123 (Đã giải mã)' },
+                            { label: 'Lệnh C2 gửi về', val: 'Bản ghi TXT mã hóa' }
+                        ]
+                    }
+                ]
+            }
+        };
+
+        const QUIZ_QUESTIONS = [
+            {
+                question: 'Điểm đặc trưng làm nên sức phá hoại cực lớn của tấn công Khuếch đại DNS (DNS Amplification) là gì?',
+                options: [
+                    'Sử dụng giao thức TCP thay thế cho UDP',
+                    'Mã hóa toàn bộ bản ghi DNS trên Authoritative Server',
+                    'Lợi dụng Open Resolver trả về phản hồi EDNS0 kích thước lớn (gấp ~50 lần) về IP bị giả mạo của nạn nhân',
+                    'Tấn công trực tiếp vào nguồn điện của trung tâm dữ liệu'
+                ],
+                correct: 2,
+                explain: 'Chính xác! Tấn công khuếch đại DNS khai thác sự chênh lệch giữa dung lượng yêu cầu nhỏ (~60B) và phản hồi rất lớn (~3000B+) kết hợp giả mạo IP nguồn (IP Spoofing) để làm tràn ngập băng thông nạn nhân.'
+            },
+            {
+                question: 'Trong kỹ thuật Kaminsky Cache Poisoning, hai thông số 16-bit quan trọng nào kẻ tấn công phải đoán trúng để chèn IP giả vào Cache?',
+                options: [
+                    'Địa chỉ MAC và Địa chỉ IP nguồn',
+                    'Transaction ID (TxID) và Source Port UDP',
+                    'Số thứ tự Sequence Number và Acknowledgment Number',
+                    'Mã TTL và Mã vùng TLD'
+                ],
+                correct: 1,
+                explain: 'Chính xác! Resolver kiểm tra tính hợp lệ của gói tin phản hồi dựa trên việc trùng khớp đồng thời mã Transaction ID (16-bit) và cổng nguồn UDP Source Port (16-bit).'
+            },
+            {
+                question: 'Tại sao kỹ thuật Kaminsky lại hỏi các Subdomain ngẫu nhiên (vd: sub1.target.com, sub2.target.com)?',
+                options: [
+                    'Để làm hỏng ổ cứng của máy chủ Resolver',
+                    'Vì Subdomain ngẫu nhiên chưa có trong Cache, buộc Resolver phải phát sinh truy vấn mới ra Internet để kẻ tấn công có cơ hội đoán ID',
+                    'Để tăng tốc độ đường truyền Internet',
+                    'Để người dùng không nhìn thấy thanh địa chỉ trình duyệt'
+                ],
+                correct: 1,
+                explain: 'Chính xác! Nếu hỏi tên miền chính có sẵn trong Cache, Resolver sẽ trả lời ngay lập tức. Hỏi Subdomain ngẫu nhiên ép Resolver phát sinh tra cứu mới ra ngoài Internet.'
+            },
+            {
+                question: 'Điểm khác biệt chính giữa DNS Hijacking và DNS Cache Poisoning là gì?',
+                options: [
+                    'DNS Hijacking tấn công vào cấu hình/tài khoản gốc (Registrar, Router), còn Cache Poisoning đầu độc bộ nhớ tạm của Resolver',
+                    'DNS Hijacking chỉ xảy ra trên điện thoại di động',
+                    'Cache Poisoning làm hỏng phần cứng Router',
+                    'Không có sự khác biệt nào'
+                ],
+                correct: 0,
+                explain: 'Chính xác! DNS Hijacking can thiệp trực tiếp vào quyền quản trị (đổi bản ghi A gốc), trong khi Cache Poisoning lừa máy chủ Resolver lưu tạm dữ liệu sai vào bộ nhớ đệm.'
+            },
+            {
+                question: 'Giải pháp nào hiệu quả nhất để chống lại tấn công DNS Cache Poisoning bằng cách xác thực chữ ký số?',
+                options: [
+                    'Cài đặt phần mềm diệt virus trên máy tính người dùng',
+                    'Triển khai mở rộng an toàn DNSSEC (DNS Security Extensions)',
+                    'Sử dụng dây cáp mạng chất lượng cao hơn',
+                    'Tắt hoàn toàn dịch vụ DNS'
+                ],
+                correct: 1,
+                explain: 'Chính xác! DNSSEC thêm chữ ký số mã hóa vào các bản ghi DNS, giúp Resolver xác thực được dữ liệu trả về đến từ nguồn chính thống và không bị chỉnh sửa trên đường truyền.'
+            }
+        ];
+
+        // =========================================================================
+        // QUẢN LÝ TRẠNG THÁI ỨNG DỤNG (STATE MANAGEMENT)
+        // =========================================================================
+        let currentScenarioKey = 'amp';
+        let currentStepIndex = 0;
+        let isAutoPlaying = false;
+        let autoPlayTimer = null;
+        let quizAnswers = {};
+
+        // Khởi tạo trang khi nạp xong DOM
+        window.addEventListener('DOMContentLoaded', () => {
+            initScenario(currentScenarioKey);
+            renderQuiz();
+        });
+
+        function switchTab(key) {
+            if (SCENARIOS[key]) {
+                stopAutoPlay();
+                currentScenarioKey = key;
+                currentStepIndex = 0;
+                
+                // Cập nhật kiểu giao diện nút Tab
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.className = 'tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-white transition-all duration-200 whitespace-nowrap';
+                });
+                const activeBtn = document.getElementById(`tab-${key}`);
+                if (activeBtn) {
+                    activeBtn.className = 'tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 bg-blue-600 text-white shadow-md shadow-blue-600/20 whitespace-nowrap';
+                }
+
+                initScenario(key);
+            }
+        }
+
+        function initScenario(key) {
+            const sc = SCENARIOS[key];
+            
+            // 1. Nạp tiêu đề kịch bản
+            const headerBox = document.getElementById('headerContent');
+            headerBox.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span class="px-3 py-1 rounded-md text-xs font-extrabold uppercase tracking-wide border ${sc.badgeColor}">${sc.badge}</span>
+                    <span class="text-xs text-slate-400 font-mono">MÃ KỊCH BẢN: ${sc.id.toUpperCase()}</span>
+                </div>
+                <h2 class="text-xl sm:text-2xl font-extrabold text-slate-800 mb-2">${sc.title}</h2>
+                <p class="text-slate-600 text-xs sm:text-sm leading-relaxed max-w-4xl">${markedSimple(sc.headerDesc)}</p>
+            `;
+
+            // 2. Nạp công cụ thanh trượt tùy chỉnh nếu là kịch bản DoS
+            const paramsBox = document.getElementById('customParams');
+            if (key === 'amp') {
+                paramsBox.innerHTML = `
+                    <div class="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <label class="text-slate-600 font-semibold">Số lượng Botnet:</label>
+                        <input type="range" min="100" max="2000" step="100" value="${sc.botnetCount}" onchange="updateBotnet(this.value)" class="w-24 accent-blue-600 cursor-pointer">
+                        <span id="botnetVal" class="font-mono text-blue-600 font-bold">${sc.botnetCount}</span>
+                    </div>
+                `;
+            } else {
+                paramsBox.innerHTML = '';
+            }
+
+            renderStepBadges();
+            renderStep(0);
+        }
+
+        function updateBotnet(val) {
+            SCENARIOS.amp.botnetCount = val;
+            const el = document.getElementById('botnetVal');
+            if (el) el.innerText = val;
+            if (currentScenarioKey === 'amp' && currentStepIndex === 3) {
+                renderStep(currentStepIndex);
+            }
+        }
+
+        function renderStepBadges() {
+            const sc = SCENARIOS[currentScenarioKey];
+            const badgeBox = document.getElementById('stepBadges');
+            badgeBox.innerHTML = '';
+            sc.steps.forEach((step, idx) => {
+                const badge = document.createElement('button');
+                badge.onclick = () => jumpToStep(idx);
+                badge.className = `w-7 h-7 rounded-lg text-xs font-extrabold transition flex items-center justify-center border ${
+                    idx === currentStepIndex 
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                        : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                }`;
+                badge.innerText = idx + 1;
+                badgeBox.appendChild(badge);
+            });
+        }
+
+        function renderStep(index) {
+            const sc = SCENARIOS[currentScenarioKey];
+            if (index < 0 || index >= sc.steps.length) return;
+
+            currentStepIndex = index;
+            const step = sc.steps[index];
+
+            renderStepBadges();
+
+            // Cập nhật thông tin chi tiết bước
+            document.getElementById('stepTitle').innerText = step.title;
+            document.getElementById('stepDescription').innerText = step.desc;
+            document.getElementById('stepTechnicalDetail').innerText = step.tech;
+
+            // Cập nhật nhãn trạng thái
+            const tag = document.getElementById('statusTag');
+            tag.innerText = step.status.text;
+            tag.className = `px-2.5 py-0.5 rounded text-[10px] font-mono border font-bold ${step.status.color}`;
+
+            // Cập nhật danh sách đo lường
+            const metricBox = document.getElementById('metricBox');
+            metricBox.innerHTML = '';
+            if (step.metrics) {
+                step.metrics.forEach(m => {
+                    metricBox.innerHTML += `
+                        <div class="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                            <span class="text-slate-500 font-medium">${m.label}:</span>
+                            <span class="font-mono font-bold text-slate-800">${m.val}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            // Cập nhật khung hiển thị Cache
+            const cacheBox = document.getElementById('cacheStateVisual');
+            if (step.cacheState) {
+                cacheBox.classList.remove('hidden');
+                const records = document.getElementById('cacheRecords');
+                let colorClass = 'text-emerald-600 font-bold';
+                if (step.cacheState.status === 'poisoned') colorClass = 'text-rose-600 font-extrabold animate-pulse';
+                if (step.cacheState.status === 'waiting') colorClass = 'text-amber-600 font-bold';
+
+                records.innerHTML = `
+                    <div class="flex justify-between py-1 border-b border-slate-100">
+                        <span class="text-slate-500">Domain:</span>
+                        <span class="text-slate-800 font-bold">${step.cacheState.domain}</span>
+                    </div>
+                    <div class="flex justify-between py-1">
+                        <span class="text-slate-500">IP Record:</span>
+                        <span class="${colorClass}">${step.cacheState.ip}</span>
+                    </div>
+                `;
+            } else {
+                cacheBox.classList.add('hidden');
+            }
+
+            // Cập nhật nút bấm
+            document.getElementById('btnPrev').disabled = (index === 0);
+            document.getElementById('btnNext').disabled = (index === sc.steps.length - 1);
+
+            // Vẽ đồ họa SVG Canvas
+            renderSvgCanvas(sc, step);
+        }
+
+        // =========================================================================
+        // ĐỒ HỌA SVG CANVAS ANIMATION ENGINE
+        // =========================================================================
+        function renderSvgCanvas(scenario, step) {
+            const svg = document.getElementById('simSvg');
+            const nodesGroup = document.getElementById('svgNodes');
+            const linksGroup = document.getElementById('svgLinks');
+            const packetsGroup = document.getElementById('svgPackets');
+
+            nodesGroup.innerHTML = '';
+            linksGroup.innerHTML = '';
+            packetsGroup.innerHTML = '';
+
+            // 1. Vẽ đường liên kết giữa các Node
+            scenario.links.forEach(link => {
+                const sourceNode = scenario.nodes.find(n => n.id === link.from);
+                const targetNode = scenario.nodes.find(n => n.id === link.to);
+
+                if (sourceNode && targetNode) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', sourceNode.x);
+                    line.setAttribute('y1', sourceNode.y);
+                    line.setAttribute('x2', targetNode.x);
+                    line.setAttribute('y2', targetNode.y);
+                    
+                    let isStepActive = false;
+                    let activeColor = '#cbd5e1';
+                    if (step.activeLinks) {
+                        const activeL = step.activeLinks.find(al => al.from === link.from && al.to === link.to);
+                        if (activeL) {
+                            isStepActive = true;
+                            activeColor = activeL.color;
+                        }
+                    }
+
+                    line.setAttribute('stroke', isStepActive ? activeColor : '#e2e8f0');
+                    line.setAttribute('stroke-width', isStepActive ? '3.5' : '2');
+                    if (link.type === 'heavy' && isStepActive) {
+                        line.setAttribute('stroke-width', '7');
+                    }
+                    line.setAttribute('stroke-dasharray', isStepActive ? '6,6' : 'none');
+
+                    linksGroup.appendChild(line);
+
+                    // Nhãn mác trên đường nối
+                    const midX = (sourceNode.x + targetNode.x) / 2;
+                    const midY = (sourceNode.y + targetNode.y) / 2;
+                    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    text.setAttribute('x', midX);
+                    text.setAttribute('y', midY - 8);
+                    text.setAttribute('fill', isStepActive ? activeColor : '#94a3b8');
+                    text.setAttribute('font-size', '10');
+                    text.setAttribute('font-weight', '700');
+                    text.setAttribute('text-anchor', 'middle');
+                    text.textContent = link.label;
+                    linksGroup.appendChild(text);
+                }
+            });
+
+            // 2. Vẽ biểu tượng nút mạng (Nodes)
+            scenario.nodes.forEach(node => {
+                const isActive = step.activeNodes.includes(node.id);
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+
+                // Vòng aura lan tỏa nếu active
+                if (isActive) {
+                    const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    ring.setAttribute('r', '32');
+                    ring.setAttribute('fill', 'none');
+                    ring.setAttribute('stroke', node.color);
+                    ring.setAttribute('stroke-width', '2');
+                    ring.setAttribute('opacity', '0.6');
+                    ring.setAttribute('class', 'active-node-ring');
+                    g.appendChild(ring);
+                }
+
+                // Hình tròn nền của Node
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('r', '24');
+                circle.setAttribute('fill', '#ffffff');
+                circle.setAttribute('stroke', isActive ? node.color : '#cbd5e1');
+                circle.setAttribute('stroke-width', isActive ? '3' : '2');
+                circle.setAttribute('filter', isActive ? 'url(#softGlow)' : 'none');
+                g.appendChild(circle);
+
+                // Icon FontAwesome
+                const foreignObj = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                foreignObj.setAttribute('x', '-12');
+                foreignObj.setAttribute('y', '-12');
+                foreignObj.setAttribute('width', '24');
+                foreignObj.setAttribute('height', '24');
+                foreignObj.innerHTML = `<div xmlns="http://www.w3.org/1999/xhtml" class="w-full h-full flex items-center justify-center"><i class="fa-solid ${node.icon} text-sm" style="color: ${node.color}"></i></div>`;
+                g.appendChild(foreignObj);
+
+                // Tên hiển thị Node
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', '0');
+                text.setAttribute('y', '42');
+                text.setAttribute('fill', isActive ? '#0f172a' : '#64748b');
+                text.setAttribute('font-size', '11');
+                text.setAttribute('font-weight', '700');
+                text.setAttribute('text-anchor', 'middle');
+                text.textContent = node.name;
+                g.appendChild(text);
+
+                nodesGroup.appendChild(g);
+            });
+
+            // 3. Hiệu ứng gói tin di chuyển (Packet Animations)
+            if (step.packetAnim) {
+                const anim = step.packetAnim;
+                const sourceNode = scenario.nodes.find(n => n.id === anim.from);
+                const targetNode = scenario.nodes.find(n => n.id === anim.to);
+
+                if (sourceNode && targetNode) {
+                    for (let i = 0; i < anim.count; i++) {
+                        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        circle.setAttribute('r', anim.size || 5);
+                        circle.setAttribute('fill', anim.color);
+                        circle.setAttribute('filter', 'url(#softGlow)');
+
+                        const animMotion = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+                        animMotion.setAttribute('path', `M ${sourceNode.x} ${sourceNode.y} L ${targetNode.x} ${targetNode.y}`);
+                        animMotion.setAttribute('dur', `${1.3 + (i * 0.2)}s`);
+                        animMotion.setAttribute('repeatCount', 'indefinite');
+                        animMotion.setAttribute('begin', `${i * 0.15}s`);
+
+                        circle.appendChild(animMotion);
+                        packetsGroup.appendChild(circle);
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // ĐIỀU KHIỂN CHẠY MÔ PHỎNG (PLAYBACK CONTROLS)
+        // =========================================================================
+        function nextStep() {
+            const sc = SCENARIOS[currentScenarioKey];
+            if (currentStepIndex < sc.steps.length - 1) {
+                renderStep(currentStepIndex + 1);
+            } else {
+                stopAutoPlay();
+            }
+        }
+
+        function prevStep() {
+            if (currentStepIndex > 0) {
+                renderStep(currentStepIndex - 1);
+            }
+        }
+
+        function jumpToStep(index) {
+            renderStep(index);
+        }
+
+        function resetCurrentScenario() {
+            stopAutoPlay();
+            renderStep(0);
+        }
+
+        function toggleAutoPlay() {
+            if (isAutoPlaying) {
+                stopAutoPlay();
+            } else {
+                startAutoPlay();
+            }
+        }
+
+        function startAutoPlay() {
+            isAutoPlaying = true;
+            document.getElementById('playIcon').className = 'fa-solid fa-pause';
+            document.getElementById('playText').innerText = 'Tạm dừng';
+
+            const sc = SCENARIOS[currentScenarioKey];
+            if (currentStepIndex >= sc.steps.length - 1) {
+                currentStepIndex = 0;
+                renderStep(0);
+            }
+
+            autoPlayTimer = setInterval(() => {
+                if (currentStepIndex < sc.steps.length - 1) {
+                    nextStep();
+                } else {
+                    stopAutoPlay();
+                }
+            }, 3800);
+        }
+
+        function stopAutoPlay() {
+            isAutoPlaying = false;
+            if (autoPlayTimer) clearInterval(autoPlayTimer);
+            document.getElementById('playIcon').className = 'fa-solid fa-play';
+            document.getElementById('playText').innerText = 'Tự động chạy';
+        }
+
+        function markedSimple(str) {
+            return str.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-800 font-bold">$1</strong>');
+        }
+
+        // =========================================================================
+        // XỬ LÝ BÀI TRẮC NGHIỆM TƯƠNG TÁC (QUIZ)
+        // =========================================================================
+        function renderQuiz() {
+            const container = document.getElementById('quizContainer');
+            container.innerHTML = '';
+
+            QUIZ_QUESTIONS.forEach((q, qIdx) => {
+                const qBox = document.createElement('div');
+                qBox.className = 'bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3';
+                
+                let optionsHtml = '';
+                q.options.forEach((opt, oIdx) => {
+                    optionsHtml += `
+                        <label class="flex items-start space-x-3 p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 cursor-pointer transition text-xs text-slate-700 font-medium">
+                            <input type="radio" name="quiz_${qIdx}" value="${oIdx}" onchange="checkQuiz(${qIdx}, ${oIdx})" class="mt-0.5 accent-blue-600">
+                            <span>${opt}</span>
+                        </label>
+                    `;
+                });
+
+                qBox.innerHTML = `
+                    <p class="text-xs sm:text-sm font-bold text-slate-800">${qIdx + 1}. ${q.question}</p>
+                    <div class="space-y-2">${optionsHtml}</div>
+                    <div id="quizExplain_${qIdx}" class="hidden p-3 rounded-lg text-xs font-semibold"></div>
+                `;
+
+                container.appendChild(qBox);
+            });
+        }
+
+        function checkQuiz(qIdx, selectedOpt) {
+            quizAnswers[qIdx] = selectedOpt;
+            const q = QUIZ_QUESTIONS[qIdx];
+            const explainBox = document.getElementById(`quizExplain_${qIdx}`);
+            explainBox.classList.remove('hidden');
+
+            if (selectedOpt === q.correct) {
+                explainBox.className = 'p-3 rounded-lg text-xs font-semibold bg-emerald-100 border border-emerald-300 text-emerald-800';
+                explainBox.innerHTML = `<i class="fa-solid fa-circle-check mr-1.5"></i> Chính xác! ${q.explain}`;
+            } else {
+                explainBox.className = 'p-3 rounded-lg text-xs font-semibold bg-rose-100 border border-rose-300 text-rose-800';
+                explainBox.innerHTML = `<i class="fa-solid fa-circle-xmark mr-1.5"></i> Chưa chính xác. Hãy đọc kỹ gợi ý và thử chọn lại đáp án khác!`;
+            }
+
+            // Tự động tính điểm
+            let correctCount = 0;
+            Object.keys(quizAnswers).forEach(idx => {
+                if (quizAnswers[idx] === QUIZ_QUESTIONS[idx].correct) correctCount++;
+            });
+            document.getElementById('quizScore').innerText = `Điểm số: ${correctCount}/${QUIZ_QUESTIONS.length}`;
+        }
+    </script>
+</body>
+</html>
