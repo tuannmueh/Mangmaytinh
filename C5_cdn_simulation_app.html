@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mô Phỏng CDN Mạng Rộng Lớn: GeoDNS vs Anycast BGP</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #f8fafc; color: #1e293b; }
+        ::-webkit-scrollbar { width: 7px; height: 7px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        @keyframes pulse-ring {
+            0% { transform: scale(0.92); opacity: 0.9; }
+            50% { transform: scale(1.25); opacity: 0.3; }
+            100% { transform: scale(0.92); opacity: 0.9; }
+        }
+        .active-node-ring { animation: pulse-ring 2s infinite ease-in-out; }
+        .card-white {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
+
+    <!-- Header Trang Web -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-blue-600 rounded-xl shadow-md shadow-blue-500/20 text-white">
+                    <i class="fa-solid fa-network-wired text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-slate-800 leading-tight">Mô Phỏng Hạ Tầng Mạng CDN: GeoDNS vs Anycast BGP</h1>
+                    <p class="text-xs text-slate-500 font-medium">Multi-Hop ISP Router Network Topology & Failover Visualizer</p>
+                </div>
+            </div>
+            <div class="hidden md:flex items-center space-x-2 text-xs bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 text-slate-600 font-semibold">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Hạ Tầng 10 Router ISP & 4 Edge POPs</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="bg-slate-100/80 border-b border-slate-200 sticky top-16 z-40 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <nav class="flex space-x-2 overflow-x-auto py-2.5 scrollbar-none">
+                <button onclick="switchTab('geodns')" id="tab-geodns" class="tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 bg-blue-600 text-white shadow-md shadow-blue-600/20 whitespace-nowrap">
+                    <i class="fa-solid fa-sitemap"></i>
+                    <span>1. GeoDNS Routing (L7 DNS Level - IP Riêng)</span>
+                </button>
+                <button onclick="switchTab('anycast')" id="tab-anycast" class="tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-white transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-globe"></i>
+                    <span>2. Anycast BGP Routing (L3 Network Level - Shared VIP)</span>
+                </button>
+                <button onclick="switchTab('failover')" id="tab-failover" class="tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-white transition-all duration-200 whitespace-nowrap">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>3. So Sánh Sự Cố Sập POP (TTL Delay vs BGP Withdrawal)</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Khối Nội Dung Chính -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Header Mô Tả Kịch Bản -->
+        <div class="card-white p-5 sm:p-6 rounded-2xl relative overflow-hidden">
+            <div id="headerContent" class="relative z-10"></div>
+            <div class="absolute -right-12 -top-12 w-48 h-48 bg-blue-500/5 rounded-full blur-2xl pointer-events-none"></div>
+        </div>
+
+        <!-- Bảng Thông Số Kỹ Thuật Real-time -->
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div class="card-white p-3.5 sm:p-4 rounded-xl">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Địa Chỉ IP Trả Về</span>
+                <div id="metricIp" class="text-sm sm:text-lg font-black text-blue-600 font-mono mt-1">103.1.2.3</div>
+                <span id="metricIpType" class="text-[10px] font-semibold text-slate-500">Unicast IP (GeoDNS)</span>
+            </div>
+            <div class="card-white p-3.5 sm:p-4 rounded-xl">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Số Chặng Router (Hops)</span>
+                <div id="metricHops" class="text-lg sm:text-2xl font-black text-slate-800 font-mono mt-1">3 Hops</div>
+                <span id="metricHopsPath" class="text-[10px] font-semibold text-slate-500">AS100 -> AS200 -> AS300</span>
+            </div>
+            <div class="card-white p-3.5 sm:p-4 rounded-xl">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Độ Trễ RTT (Latency)</span>
+                <div id="metricLatency" class="text-lg sm:text-2xl font-black text-emerald-600 font-mono mt-1">15 ms</div>
+                <span class="text-[10px] font-semibold text-emerald-600">POP Singapore</span>
+            </div>
+            <div class="card-white p-3.5 sm:p-4 rounded-xl">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">DNS Cache TTL</span>
+                <div id="metricTtl" class="text-lg sm:text-2xl font-black text-purple-600 font-mono mt-1">30s</div>
+                <span id="metricTtlNote" class="text-[10px] font-semibold text-slate-500">Thời gian lưu đệm</span>
+            </div>
+            <div class="card-white p-3.5 sm:p-4 rounded-xl col-span-2 lg:col-span-1">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Trạng Thái BGP Route</span>
+                <div id="metricBgpStatus" class="text-sm sm:text-base font-black text-emerald-600 font-mono mt-1">ACTIVE (AS-PATH OK)</div>
+                <span class="text-[10px] font-semibold text-slate-500">BGP Table Router</span>
+            </div>
+        </div>
+
+        <!-- Khung Đồ Họa Bản Đồ Mạng Đa Router SVG -->
+        <div class="card-white rounded-2xl p-4 sm:p-6 relative min-h-[560px] flex flex-col justify-between">
+            
+            <!-- Controls Toolbar -->
+            <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <!-- Select Steps -->
+                <div class="flex items-center space-x-3">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Các bước:</span>
+                    <div id="stepBadges" class="flex items-center space-x-1.5"></div>
+                </div>
+
+                <!-- Interactive Settings -->
+                <div class="flex flex-wrap items-center gap-3 text-xs">
+                    <!-- Location Selector -->
+                    <div class="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span class="font-bold text-slate-700">Vị trí Client:</span>
+                        <select id="userLocationSelect" onchange="changeUserLocation(this.value)" class="bg-white font-bold text-slate-800 rounded-lg px-2.5 py-1 border border-slate-200 focus:outline-none cursor-pointer">
+                            <option value="vn">🇻🇳 Việt Nam (Hà Nội / VNPT)</option>
+                            <option value="jp">🇯🇵 Nhật Bản (Tokyo / NTT)</option>
+                            <option value="uk">🇬🇧 Anh (London / BT)</option>
+                            <option value="us">🇺🇸 Mỹ (California / AT&T)</option>
+                            <option value="au">🇦🇺 Úc (Sydney / Telstra)</option>
+                        </select>
+                    </div>
+
+                    <!-- Simulate Failure Button -->
+                    <button id="btnFailPop" onclick="togglePopFailure()" class="px-3 py-1.5 rounded-xl font-bold text-xs bg-rose-100 text-rose-700 border border-rose-300 hover:bg-rose-200 transition flex items-center space-x-1.5">
+                        <i class="fa-solid fa-power-off"></i>
+                        <span id="failPopText">Đánh Sập POP Singapore</span>
+                    </button>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="flex items-center space-x-2">
+                    <button id="btnPrev" onclick="prevStep()" class="p-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 border border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-chevron-left"></i>
+                        <span>Quay lại</span>
+                    </button>
+                    <button id="btnPlay" onclick="toggleAutoPlay()" class="p-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2 shadow-md shadow-blue-600/20">
+                        <i id="playIcon" class="fa-solid fa-play"></i>
+                        <span id="playText">Tự động chạy</span>
+                    </button>
+                    <button id="btnNext" onclick="nextStep()" class="p-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5 border border-slate-200 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <span>Bước tiếp</span>
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                    <button id="btnReset" onclick="resetCurrentScenario()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 rounded-xl text-xs transition border border-slate-200" title="Đặt lại mô phỏng">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Frame SVG Topology -->
+            <div class="relative w-full my-4 flex-1 min-h-[420px] flex items-center justify-center bg-slate-50/90 rounded-xl border border-slate-200/80 overflow-hidden" id="canvasContainer">
+                <svg id="simSvg" class="w-full h-full min-h-[440px]" viewBox="0 0 1000 460" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                        <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="3" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                    </defs>
+
+                    <!-- Background World Map Grid Lines -->
+                    <g opacity="0.15" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="4,4">
+                        <line x1="0" y1="110" x2="1000" y2="110" />
+                        <line x1="0" y1="230" x2="1000" y2="230" />
+                        <line x1="0" y1="350" x2="1000" y2="350" />
+                        <line x1="200" y1="0" x2="200" y2="460" />
+                        <line x1="450" y1="0" x2="450" y2="460" />
+                        <line x1="700" y1="0" x2="700" y2="460" />
+                    </g>
+
+                    <!-- Links Group -->
+                    <g id="svgLinks"></g>
+
+                    <!-- Packets Group -->
+                    <g id="svgPackets"></g>
+
+                    <!-- Nodes Group -->
+                    <g id="svgNodes"></g>
+                </svg>
+            </div>
+
+            <!-- Technical Detail & Real-time Console Log -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-2">
+                <!-- Step Technical Detail -->
+                <div class="lg:col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center space-x-2 text-blue-600 font-bold text-sm mb-1.5">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <span id="stepTitle">Tiêu đề bước...</span>
+                        </div>
+                        <p id="stepDescription" class="text-slate-700 text-xs sm:text-sm leading-relaxed">
+                            Mô tả chi tiết kỹ thuật bước hoạt động...
+                        </p>
+                    </div>
+                    <div id="stepTechnicalDetail" class="mt-3 pt-2.5 border-t border-slate-200 text-xs text-slate-800 font-mono bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                        <!-- Technical Packet details -->
+                    </div>
+                </div>
+
+                <!-- Event Console Log -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3">
+                    <h4 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                        <span>NHẬT KÝ BGP / DNS EVENT LOG</span>
+                        <span id="statusTag" class="px-2.5 py-0.5 rounded text-[10px] font-mono bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold">ONLINE</span>
+                    </h4>
+                    
+                    <div id="consoleLogBox" class="bg-slate-900 text-slate-100 p-3 rounded-lg font-mono text-[11px] h-36 overflow-y-auto space-y-1.5 leading-tight">
+                        <!-- Real-time logs render here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bảng So Sánh Chuẩn Kỹ Thuật -->
+        <div class="card-white rounded-2xl p-6 space-y-4">
+            <h3 class="text-base font-bold text-slate-800 flex items-center space-x-2">
+                <i class="fa-solid fa-table-list text-blue-600"></i>
+                <span>So Sánh Chuẩn Kỹ Thuật: GeoDNS vs Anycast BGP</span>
+            </h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs text-left text-slate-600 border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-700 border-b border-slate-200 font-bold uppercase tracking-wider">
+                            <th class="p-3">Tiêu Chí So Sánh</th>
+                            <th class="p-3">GeoDNS (DNS-level Routing)</th>
+                            <th class="p-3">Anycast BGP (Network-level Routing)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 font-medium">
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-slate-800">Tầng Quyết Định Định Tuyến</td>
+                            <td class="p-3 font-semibold text-blue-600">Tầng 7 (Application - DNS Layer)</td>
+                            <td class="p-3 font-semibold text-emerald-600">Tầng 3 / Tầng 4 (Network / IP Layer)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-slate-800">Cơ Chế Địa Chỉ IP Edge POP</td>
+                            <td class="p-3">Mỗi POP sử dụng **IP Riêng Biệt (Unicast IP)**<br><code class="text-blue-600 font-mono font-bold">SG: 103.1.2.3 | JP: 103.1.2.4</code></td>
+                            <td class="p-3">Tất cả POP toàn cầu **Dùng chung 1 IP (VIP)**<br><code class="text-emerald-600 font-mono font-bold">Tất cả POPs = 104.16.1.1</code></td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-slate-800">Thành Phần Chọn Tuyến Đường</td>
+                            <td class="p-3">Authoritative GeoDNS Server (Tra cơ sở dữ liệu GeoIP + EDNS Client Subnet)</td>
+                            <td class="p-3">Các Router BGP trên Internet (Tự động chọn tuyến có BGP AS Path ngắn nhất)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-slate-800">Xử Lý Khi Sập POP (Failover)</td>
+                            <td class="p-3 font-bold text-rose-600">Chậm (Bị kẹt do DNS TTL Cache delay 30s-60s)</td>
+                            <td class="p-3 font-bold text-emerald-600">Tức thì vài giây (BGP Route Withdrawal tự chuyển luồng, không đổi IP)</td>
+                        </tr>
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="p-3 font-bold text-slate-800">Khả Năng Chống Tấn Công DDoS</td>
+                            <td class="p-3">Dễ bị dồn dập vào Unicast IP của một POP cụ thể</td>
+                            <td class="p-3 font-bold text-cyan-600">Phân tán tự động lưu lượng DDoS ra toàn bộ Edge POPs toàn cầu</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Trắc Nghiệm Củng Cố Kiến Thức -->
+        <div class="card-white rounded-2xl p-6 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-graduation-cap text-emerald-600"></i>
+                    <span>Bài Tập Trắc Nghiệm Nâng Cao: GeoDNS vs Anycast BGP</span>
+                </h3>
+                <span id="quizScore" class="text-xs font-bold px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full">Điểm số: 0/5</span>
+            </div>
+
+            <div id="quizContainer" class="space-y-4"></div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500 font-medium">
+        <div class="max-w-7xl mx-auto px-4">
+            <p>Ứng dụng mô phỏng giáo dục hạ tầng mạng CDN rộng lớn — Trực quan hóa BGP Path Vector, GeoDNS EDNS-Client-Subnet & Failover Mechanisms.</p>
+        </div>
+    </footer>
+
+    <!-- JavaScript Logic Engine -->
+    <script>
+        // =========================================================================
+        // HẠ TẦNG MẠNG CHI TIẾT (MULTI-HOP ROUTER TOPOLOGY)
+        // =========================================================================
+
+        const CLIENT_NODES = {
+            vn: { id: 'vn', name: 'Client 🇻🇳 VN', locationName: 'Việt Nam (Hà Nội)', icon: 'fa-laptop', color: '#2563eb', x: 100, y: 130, isp: 'AS7552 (VNPT)' },
+            jp: { id: 'jp', name: 'Client 🇯🇵 JP', locationName: 'Nhật Bản (Tokyo)', icon: 'fa-laptop', color: '#2563eb', x: 100, y: 200, isp: 'AS2514 (NTT)' },
+            uk: { id: 'uk', name: 'Client 🇬🇧 UK', icon: 'fa-laptop', color: '#2563eb', x: 100, y: 270, isp: 'AS1299 (Telia/BT)' },
+            us: { id: 'us', name: 'Client 🇺🇸 US', icon: 'fa-laptop', color: '#2563eb', x: 100, y: 340, isp: 'AS7018 (AT&T)' },
+            au: { id: 'au', name: 'Client 🇦🇺 AU', icon: 'fa-laptop', color: '#2563eb', x: 100, y: 410, isp: 'AS1221 (Telstra)' }
+        };
+
+        const ROUTER_NODES = {
+            r_vn: { id: 'r_vn', name: 'Router AS7552 (VN)', icon: 'fa-network-wired', color: '#64748b', x: 260, y: 130 },
+            r_jp: { id: 'r_jp', name: 'Router AS2514 (JP)', icon: 'fa-network-wired', color: '#64748b', x: 260, y: 200 },
+            r_uk: { id: 'r_uk', name: 'Router AS1299 (EU)', icon: 'fa-network-wired', color: '#64748b', x: 260, y: 270 },
+            r_us: { id: 'r_us', name: 'Router AS7018 (US)', icon: 'fa-network-wired', color: '#64748b', x: 260, y: 340 },
+            r_au: { id: 'r_au', name: 'Router AS1221 (AU)', icon: 'fa-network-wired', color: '#64748b', x: 260, y: 410 },
+
+            r_tier1_asia: { id: 'r_tier1_asia', name: 'Tier-1 Backbone (Asia HK)', icon: 'fa-ethernet', color: '#0891b2', x: 440, y: 165 },
+            r_tier1_eu: { id: 'r_tier1_eu', name: 'Tier-1 Backbone (EU FRA)', icon: 'fa-ethernet', color: '#0891b2', x: 440, y: 270 },
+            r_tier1_us: { id: 'r_tier1_us', name: 'Tier-1 Backbone (US VA)', icon: 'fa-ethernet', color: '#0891b2', x: 440, y: 375 }
+        };
+
+        const DNS_NODES = {
+            local_resolver: { id: 'local_resolver', name: 'Local DNS Resolver', icon: 'fa-server', color: '#9333ea', x: 600, y: 80 },
+            geodns_server: { id: 'geodns_server', name: 'Authoritative GeoDNS', icon: 'fa-database', color: '#d97706', x: 800, y: 80 }
+        };
+
+        const EDGE_POPS = {
+            pop_sg: { id: 'pop_sg', name: 'POP Singapore (SEA)', icon: 'fa-server', color: '#16a34a', x: 700, y: 180, ipGeodns: '103.1.2.3', ipAnycast: '104.16.1.1', status: 'ONLINE' },
+            pop_jp: { id: 'pop_jp', name: 'POP Tokyo (NEA)', icon: 'fa-server', color: '#16a34a', x: 700, y: 260, ipGeodns: '103.1.2.4', ipAnycast: '104.16.1.1', status: 'ONLINE' },
+            pop_eu: { id: 'pop_eu', name: 'POP Frankfurt (EU)', icon: 'fa-server', color: '#16a34a', x: 700, y: 340, ipGeodns: '103.1.2.5', ipAnycast: '104.16.1.1', status: 'ONLINE' },
+            pop_us: { id: 'pop_us', name: 'POP US West (CA)', icon: 'fa-server', color: '#16a34a', x: 700, y: 420, ipGeodns: '103.1.2.6', ipAnycast: '104.16.1.1', status: 'ONLINE' }
+        };
+
+        const ORIGIN_NODE = { id: 'origin', name: 'Origin Server (US)', icon: 'fa-database', color: '#dc2626', x: 920, y: 300 };
+
+        // Mạng kết nối Router liên kết cố định
+        const NETWORK_STATIC_LINKS = [
+            { from: 'vn', to: 'r_vn' }, { from: 'jp', to: 'r_jp' }, { from: 'uk', to: 'r_uk' }, { from: 'us', to: 'r_us' }, { from: 'au', to: 'r_au' },
+            { from: 'r_vn', to: 'r_tier1_asia' }, { from: 'r_jp', to: 'r_tier1_asia' }, { from: 'r_au', to: 'r_tier1_asia' },
+            { from: 'r_uk', to: 'r_tier1_eu' }, { from: 'r_us', to: 'r_tier1_us' },
+            { from: 'r_tier1_asia', to: 'r_tier1_eu' }, { from: 'r_tier1_asia', to: 'r_tier1_us' }, { from: 'r_tier1_eu', to: 'r_tier1_us' },
+            { from: 'r_tier1_asia', to: 'pop_sg' }, { from: 'r_tier1_asia', to: 'pop_jp' },
+            { from: 'r_tier1_eu', to: 'pop_eu' }, { from: 'r_tier1_us', to: 'pop_us' },
+            { from: 'r_tier1_asia', to: 'local_resolver' }, { from: 'local_resolver', to: 'geodns_server' },
+            { from: 'pop_us', to: 'origin' }
+        ];
+
+        // =========================================================================
+        // KỊCH BẢN MÔ PHỎNG CHI TIẾT
+        // =========================================================================
+
+        const SCENARIOS = {
+            geodns: {
+                id: 'geodns',
+                title: '1. Định Tuyến GeoDNS (L7 DNS Level - IP Unicast Trả Về Khác Nhau)',
+                badge: 'DNS LEVEL ROUTING',
+                badgeColor: 'bg-blue-100 text-blue-700 border-blue-300',
+                headerDesc: 'GeoDNS hoạt động ở Tầng 7 (Ứng dụng - DNS). Authoritative Server kiểm tra IP Client/EDNS Subnet và **trả về địa chỉ IP KHÁC NHAU** trỏ tới các Edge POP tương ứng từng vùng địa lý.',
+                steps: [
+                    {
+                        title: 'Bước 1: Client gửi DNS Query tới Local Resolver',
+                        desc: 'Client muốn truy cập `example.com`. Gói tin UDP DNS Query (Port 53) được gửi tới Local Resolver qua các Router ISP.',
+                        tech: 'DNS Query: example.com IN A? -> Routed via ISP Access Router -> Local Resolver.',
+                        path: ['client', 'router_isp', 'r_tier1_asia', 'local_resolver'],
+                        packetColor: '#9333ea',
+                        metrics: { ip: 'Chưa có (Đang tra cứu)', ipType: 'DNS Query', hops: '3 Hops', latency: '5 ms', ttl: '30s', bgp: 'DNS RESOLVING' }
+                    },
+                    {
+                        title: 'Bước 2: Resolver gửi EDNS Client Subnet tới Authoritative GeoDNS Server',
+                        desc: 'Local Resolver gửi tra cứu kèm thông tin EDNS Client Subnet (ví dụ: Subnet IP Việt Nam) tới GeoDNS Server.',
+                        tech: 'EDNS0 Client Subnet: 14.225.0.0/24 (Vietnam IP) -> Authoritative GeoDNS Server.',
+                        path: ['local_resolver', 'geodns_server'],
+                        packetColor: '#d97706',
+                        metrics: { ip: 'Chưa có', ipType: 'EDNS Query', hops: '1 Hop', latency: '12 ms', ttl: '30s', bgp: 'GEODNS PROCESSING' }
+                    },
+                    {
+                        title: 'Bước 3: GeoDNS trả về IP KHÁC NHAU tùy theo vị trí địa lý Client',
+                        desc: 'GeoDNS nhìn cơ sở dữ liệu GeoIP: Client VN nhận IP POP SG (`103.1.2.3`), Client Tokyo nhận IP POP JP (`103.1.2.4`), Client EU nhận IP POP FRA (`103.1.2.5`).',
+                        tech: 'GeoDNS Answer: VN Client -> A 103.1.2.3 (POP Singapore) | TTL = 30 seconds.',
+                        path: ['geodns_server', 'local_resolver', 'client'],
+                        packetColor: '#16a34a',
+                        metrics: { ip: '103.1.2.3 (SG Unicast)', ipType: 'Unicast IP (GeoDNS)', hops: '3 Hops', latency: '15 ms', ttl: '30s (Cached)', bgp: 'DNS RESOLVED' }
+                    },
+                    {
+                        title: 'Bước 4: Client tạo kết nối HTTP/TCP trực tiếp tới IP Unicast của POP đó',
+                        desc: 'Trình duyệt Client gửi gói TCP SYN tới đúng địa chỉ IP `103.1.2.3`. Luồng dữ liệu được đẩy qua các Router ISP tới POP Singapore.',
+                        tech: 'TCP SYN -> 103.1.2.3:443 via AS7552 -> Tier-1 HK -> Edge POP Singapore. HTTP/3 Handshake OK.',
+                        path: ['client', 'router_isp', 'r_tier1_asia', 'target_pop'],
+                        packetColor: '#2563eb',
+                        metrics: { ip: '103.1.2.3 (POP SG)', ipType: 'Unicast IP', hops: '3 Hops', latency: '15 ms', ttl: '30s Active', bgp: 'HTTP CONNECTED' }
+                    }
+                ]
+            },
+
+            anycast: {
+                id: 'anycast',
+                title: '2. Định Tuyến Anycast BGP (L3/L4 Network Level - Shared VIP 104.16.1.1)',
+                badge: 'NETWORK BGP ROUTING',
+                badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                headerDesc: 'Anycast BGP hoạt động ở Tầng 3/4 (Mạng). **Tất cả các Edge POP toàn cầu ĐỀU DÙNG CHUNG 1 ĐỊA CHỈ IP (`104.16.1.1`)**. Các Router BGP trên Internet tự chọn tuyến BGP AS-Path ngắn nhất.',
+                steps: [
+                    {
+                        title: 'Bước 1: Tất cả Edge POPs quảng bá cùng 1 tuyến BGP Prefix (/24) ra Internet',
+                        desc: 'Tất cả POP Singapore, Tokyo, Frankfurt, US-West đồng loạt quảng bá tuyến `104.16.1.0/24` tới các Router BGP Láng Giềng (Peering).',
+                        tech: 'BGP Route Advertisement: Prefix 104.16.1.0/24 announced by all Edge POP ASNs globally.',
+                        path: ['target_pop', 'r_tier1_asia', 'router_isp'],
+                        packetColor: '#16a34a',
+                        metrics: { ip: '104.16.1.1 (VIP)', ipType: 'Shared Anycast VIP', hops: '0 Hops', latency: '0 ms', ttl: 'N/A (BGP Layer)', bgp: 'ANNOUNCING PREFIX' }
+                    },
+                    {
+                        title: 'Bước 2: Client phát gói tin TCP/IP trực tiếp tới IP VIP 104.16.1.1',
+                        desc: 'Client không cần qua bước tra cứu DNS phức tạp để đổi IP. Gói tin gửi thẳng tới địa chỉ VIP dùng chung `104.16.1.1`.',
+                        tech: 'IP Packet: Src = Client IP -> Dst = 104.16.1.1 (Anycast Shared VIP). Sent to ISP Gateway Router.',
+                        path: ['client', 'router_isp'],
+                        packetColor: '#2563eb',
+                        metrics: { ip: '104.16.1.1 (VIP)', ipType: 'Shared Anycast VIP', hops: '1 Hop', latency: '2 ms', ttl: 'N/A', bgp: 'LOOKING BGP TABLE' }
+                    },
+                    {
+                        title: 'Bước 3: Router ISP chọn chặng BGP AS-Path ngắn nhất đến Edge POP gần nhất',
+                        desc: 'Router ISP tra bảng BGP Table: Tuyến đi POP Singapore có BGP Hops = 2, trong khi đi POP US có BGP Hops = 5. Router tự chuyển hướng gói tin về POP Singapore.',
+                        tech: 'BGP Decision Engine: Selected Best Path = AS7552 -> Tier1-HK -> POP-SG (AS Path Length: 2, Shortest RTT).',
+                        path: ['router_isp', 'r_tier1_asia', 'target_pop'],
+                        packetColor: '#16a34a',
+                        metrics: { ip: '104.16.1.1 (VIP)', ipType: 'Shared Anycast VIP', hops: '2 BGP Hops', latency: '15 ms', ttl: 'N/A', bgp: 'BEST PATH SELECTED' }
+                    }
+                ]
+            },
+
+            failover: {
+                id: 'failover',
+                title: '3. So Sánh Sự Cố Sập POP: GeoDNS TTL Delay vs Anycast BGP Withdrawal',
+                badge: 'FAILOVER MECHANISM',
+                badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
+                headerDesc: 'Thử nghiệm đánh sập POP Singapore! So sánh tại sao GeoDNS bị kẹt lỗi TTL Cache Delay, trong khi Anycast BGP tự nhảy luồng sang POP lân cận chỉ trong vài giây.',
+                steps: [
+                    {
+                        title: 'Sự cố: Edge POP Singapore bị sập đột ngột!',
+                        desc: 'Bấm nút "Đánh Sập POP Singapore" ở thanh công cụ để kích hoạt kịch bản sự cố!',
+                        tech: 'CRITICAL EVENT: Edge POP Singapore Offline / Network Cable Cut!',
+                        path: [],
+                        packetColor: '#dc2626',
+                        metrics: { ip: 'SỬ DỤNG DƯỚI ĐÂY', ipType: 'SỰ CỐ POP', hops: '0', latency: 'TIMEOUT', ttl: '0s', bgp: 'POP DOWN' }
+                    },
+                    {
+                        title: 'GeoDNS Failover: Bị kẹt lỗi TTL Cache (Client gửi vào IP chết)',
+                        desc: 'GeoDNS: Do DNS Cache TTL còn hiệu lực (30s), Client và Resolver tiếp tục gửi gói tin tới IP cũ `103.1.2.3` (POP đã chết) dẫn đến mất kết nối 100%!',
+                        tech: 'GeoDNS Failure Mode: DNS TTL Active (30s countdown). Requests hit Dead IP 103.1.2.3. CONNECTION TIMEOUT!',
+                        path: ['client', 'router_isp', 'r_tier1_asia'],
+                        packetColor: '#dc2626',
+                        metrics: { ip: '103.1.2.3 (DEAD IP)', ipType: 'GeoDNS Unicast', hops: '3 Hops', latency: 'TIMEOUT', ttl: '28s (TTL STUCK!)', bgp: 'PACKET DROPPED' }
+                    },
+                    {
+                        title: 'Anycast BGP Failover: BGP Route Withdrawal tự khắc phục tức thì',
+                        desc: 'Anycast BGP: Router nhận bản tin BGP Route Withdrawal. Router tự động đẩy gói tin tới `104.16.1.1` qua POP Tokyo gần thứ nhì mà KHÔNG CẦN ĐỔI IP!',
+                        tech: 'Anycast Failover: BGP Route Withdrawal for SG. Router BGP Table updated -> Rerouted to POP Tokyo (104.16.1.1). Seamless Failover!',
+                        path: ['client', 'router_isp', 'r_tier1_asia', 'pop_jp'],
+                        packetColor: '#16a34a',
+                        metrics: { ip: '104.16.1.1 (SAME VIP)', ipType: 'Shared Anycast VIP', hops: '3 BGP Hops', latency: '35 ms (via JP)', ttl: 'N/A', bgp: 'BGP REROUTED OK' }
+                    }
+                ]
+            }
+        };
+
+        const QUIZ_QUESTIONS = [
+            {
+                question: 'Trong mô hình Anycast BGP, đặc điểm quan trọng nhất về địa chỉ IP của các Edge POPs trên toàn thế giới là gì?',
+                options: [
+                    'Mỗi Edge POP sử dụng một địa chỉ IP Unicast hoàn toàn khác nhau',
+                    'Tất cả các Edge POPs trên toàn thế giới đều dùng chung 1 địa chỉ IP Anycast (VIP)',
+                    'Địa chỉ IP thay đổi liên tục sau mỗi 5 giây',
+                    'Không sử dụng địa chỉ IP mà dùng địa chỉ MAC'
+                ],
+                correct: 1,
+                explain: 'Chính xác! Trong Anycast BGP, tất cả các máy chủ Edge POP toàn cầu đều quảng bá và sử dụng chung 1 địa chỉ IP (Shared VIP). Các Router BGP sẽ tự định tuyến gói tin đến POP gần nhất.'
+            },
+            {
+                question: 'Lý do chính khiến GeoDNS gặp tình trạng trễ (Delay) khi chuyển luồng lúc một Edge POP bị sập là gì?',
+                options: [
+                    'Do dây cáp quang biển bị hỏng hoàn toàn',
+                    'Do thời gian lưu đệm DNS TTL (Time-To-Live) khiến Client và Resolver vẫn dùng IP cũ của POP bị sập',
+                    'Do BGP Router từ chối hoạt động',
+                    'Do máy tính người dùng hết bộ nhớ RAM'
+                ],
+                correct: 1,
+                explain: 'Chính xác! GeoDNS dựa vào bản ghi DNS. Khi POP sập, các Resolver/Client vẫn lưu IP cũ trong bộ nhớ đệm (DNS Cache) cho đến khi hết hạn TTL (30s-60s), gây gián đoạn kết nối.'
+            },
+            {
+                question: 'Thành phần nào đưa ra quyết định chọn tuyến đường truyền trong kịch bản Anycast BGP?',
+                options: [
+                    'Authoritative GeoDNS Server',
+                    'Trình duyệt web của người dùng',
+                    'Các BGP Routers trên mạng Internet (dựa vào bảng BGP Table & AS-Path)',
+                    'Nhà cung cấp dịch vụ tên miền Registrar'
+                ],
+                correct: 2,
+                explain: 'Chính xác! Trong Anycast, quyết định định tuyến nằm ở Tầng 3/4 do các Router ISP thực hiện dựa trên thuật toán BGP Path Vector (chọn tuyến BGP AS-Path ngắn nhất).'
+            },
+            {
+                question: 'Kỹ thuật EDNS Client Subnet (ECS) trong GeoDNS có tác dụng gì?',
+                options: [
+                    'Tăng tốc độ dây cáp mạng',
+                    'Gửi thông tin dải IP Subnet của Client tới GeoDNS Server để trả về IP POP chính xác hơn',
+                    'Xóa toàn bộ bộ nhớ đệm trên máy trạm',
+                    'Mã hóa mật khẩu người dùng'
+                ],
+                correct: 1,
+                explain: 'Chính xác! EDNS Client Subnet (ECS) truyền thông tin IP Subnet của Client thật tới GeoDNS Server, giúp GeoDNS không bị nhầm lẫn vị trí khi người dùng sử dụng Public DNS (như 8.8.8.8).'
+            },
+            {
+                question: 'Khi một Edge POP Anycast bị sự cố, cơ chế BGP nào giúp mạng tự phục hồi liền mạch mà không cần đổi địa chỉ IP?',
+                options: [
+                    'BGP Route Withdrawal (Rút lại tuyến BGP) giúp Router tự chuyển luồng sang POP Anycast lân cận',
+                    'Xóa toàn bộ file trên máy chủ gốc',
+                    'Cài đặt lại hệ điều hành Router',
+                    'Chuyển sang dùng giao thức FTP'
+                ],
+                correct: 0,
+                explain: 'Chính xác! Khi POP Anycast gặp sự cố, nó ngừng phát bản tin BGP. Các Router nhận biết qua BGP Route Withdrawal và tự động định tuyến gói tin (vẫn gửi tới VIP `104.16.1.1`) sang POP Anycast hoạt động gần nhất.'
+            }
+        ];
+
+        // =========================================================================
+        // APP STATE & CONTROLLER
+        // =========================================================================
+        let selectedClientKey = 'vn';
+        let currentScenarioKey = 'geodns';
+        let currentStepIndex = 0;
+        let isPopSgDown = false;
+        let isAutoPlaying = false;
+        let autoPlayTimer = null;
+        let quizAnswers = {};
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initScenario(currentScenarioKey);
+            renderQuiz();
+        });
+
+        function switchTab(key) {
+            if (SCENARIOS[key]) {
+                stopAutoPlay();
+                currentScenarioKey = key;
+                currentStepIndex = 0;
+                
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.className = 'tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-blue-600 hover:bg-white transition-all duration-200 whitespace-nowrap';
+                });
+                const activeBtn = document.getElementById(`tab-${key}`);
+                if (activeBtn) {
+                    activeBtn.className = 'tab-btn flex items-center space-x-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 bg-blue-600 text-white shadow-md shadow-blue-600/20 whitespace-nowrap';
+                }
+
+                initScenario(key);
+            }
+        }
+
+        function changeUserLocation(key) {
+            if (CLIENT_NODES[key]) {
+                selectedClientKey = key;
+                renderStep(currentStepIndex);
+            }
+        }
+
+        function togglePopFailure() {
+            isPopSgDown = !isPopSgDown;
+            EDGE_POPS.pop_sg.status = isPopSgDown ? 'OFFLINE' : 'ONLINE';
+            
+            const btnText = document.getElementById('failPopText');
+            const btn = document.getElementById('btnFailPop');
+            if (isPopSgDown) {
+                btnText.innerText = 'Khôi Phục POP Singapore';
+                btn.className = 'px-3 py-1.5 rounded-xl font-bold text-xs bg-emerald-100 text-emerald-700 border border-emerald-300 hover:bg-emerald-200 transition flex items-center space-x-1.5';
+            } else {
+                btnText.innerText = 'Đánh Sập POP Singapore';
+                btn.className = 'px-3 py-1.5 rounded-xl font-bold text-xs bg-rose-100 text-rose-700 border border-rose-300 hover:bg-rose-200 transition flex items-center space-x-1.5';
+            }
+
+            renderStep(currentStepIndex);
+        }
+
+        function initScenario(key) {
+            const sc = SCENARIOS[key];
+            const headerBox = document.getElementById('headerContent');
+            headerBox.innerHTML = `
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span class="px-3 py-1 rounded-md text-xs font-extrabold uppercase tracking-wide border ${sc.badgeColor}">${sc.badge}</span>
+                    <span class="text-xs text-slate-400 font-mono">MÃ KỊCH BẢN: ${sc.id.toUpperCase()}</span>
+                </div>
+                <h2 class="text-xl sm:text-2xl font-extrabold text-slate-800 mb-2">${sc.title}</h2>
+                <p class="text-slate-600 text-xs sm:text-sm leading-relaxed max-w-4xl">${markedSimple(sc.headerDesc)}</p>
+            `;
+
+            renderStepBadges();
+            renderStep(0);
+        }
+
+        function renderStepBadges() {
+            const sc = SCENARIOS[currentScenarioKey];
+            const badgeBox = document.getElementById('stepBadges');
+            badgeBox.innerHTML = '';
+            sc.steps.forEach((step, idx) => {
+                const badge = document.createElement('button');
+                badge.onclick = () => jumpToStep(idx);
+                badge.className = `w-7 h-7 rounded-lg text-xs font-extrabold transition flex items-center justify-center border ${
+                    idx === currentStepIndex 
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                        : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                }`;
+                badge.innerText = idx + 1;
+                badgeBox.appendChild(badge);
+            });
+        }
+
+        function renderStep(index) {
+            const sc = SCENARIOS[currentScenarioKey];
+            if (index < 0 || index >= sc.steps.length) return;
+
+            currentStepIndex = index;
+            const step = sc.steps[index];
+            const client = CLIENT_NODES[selectedClientKey];
+
+            renderStepBadges();
+
+            // Dynamic technical calculations based on client & scenario
+            let targetPop = EDGE_POPS.pop_sg;
+            if (selectedClientKey === 'jp') targetPop = EDGE_POPS.pop_jp;
+            if (selectedClientKey === 'uk') targetPop = EDGE_POPS.pop_eu;
+            if (selectedClientKey === 'us') targetPop = EDGE_POPS.pop_us;
+            if (selectedClientKey === 'au') targetPop = EDGE_POPS.pop_sg;
+
+            // Failover override
+            if (isPopSgDown && (selectedClientKey === 'vn' || selectedClientKey === 'au')) {
+                if (currentScenarioKey === 'geodns') {
+                    // Sticking to dead IP
+                    targetPop = EDGE_POPS.pop_sg;
+                } else {
+                    // Anycast reroutes to Tokyo
+                    targetPop = EDGE_POPS.pop_jp;
+                }
+            }
+
+            document.getElementById('stepTitle').innerText = step.title;
+            document.getElementById('stepDescription').innerText = step.desc;
+            document.getElementById('stepTechnicalDetail').innerText = step.tech;
+
+            // Metrics Update
+            document.getElementById('metricIp').innerText = currentScenarioKey === 'anycast' ? '104.16.1.1 (VIP)' : targetPop.ipGeodns;
+            document.getElementById('metricIpType').innerText = currentScenarioKey === 'anycast' ? 'Shared Anycast VIP' : `Unicast (${targetPop.name})`;
+            document.getElementById('metricHops').innerText = step.metrics.hops;
+            document.getElementById('metricLatency').innerText = isPopSgDown && currentScenarioKey === 'geodns' && (selectedClientKey === 'vn' || selectedClientKey === 'au') ? 'TIMEOUT' : step.metrics.latency;
+            document.getElementById('metricTtl').innerText = step.metrics.ttl;
+            document.getElementById('metricBgpStatus').innerText = isPopSgDown ? (currentScenarioKey === 'anycast' ? 'REROUTED TO JP' : 'POP SG DOWN (STUCK)') : step.metrics.bgp;
+
+            const tag = document.getElementById('statusTag');
+            tag.innerText = isPopSgDown ? 'POP SG SẬP' : 'SYSTEM OK';
+            tag.className = `px-2.5 py-0.5 rounded text-[10px] font-mono border font-bold ${isPopSgDown ? 'text-rose-800 bg-rose-100 border-rose-300' : 'text-emerald-800 bg-emerald-100 border-emerald-300'}`;
+
+            // Real-time Event Console
+            const logBox = document.getElementById('consoleLogBox');
+            const timeStr = new Date().toLocaleTimeString();
+            logBox.innerHTML = `
+                <div class="text-slate-400">[${timeStr}] CLIENT: ${client.locationName} (${client.isp})</div>
+                <div class="${isPopSgDown && currentScenarioKey === 'geodns' ? 'text-rose-400' : 'text-emerald-400'}">[${timeStr}] ${step.tech}</div>
+            ` + logBox.innerHTML;
+
+            document.getElementById('btnPrev').disabled = (index === 0);
+            document.getElementById('btnNext').disabled = (index === sc.steps.length - 1);
+
+            renderMultiHopTopologySvg(step, client, targetPop);
+        }
+
+        // =========================================================================
+        // MULTI-HOP SVG TOPOLOGY RENDERER
+        // =========================================================================
+        function renderMultiHopTopologySvg(step, client, targetPop) {
+            const svgNodes = document.getElementById('svgNodes');
+            const svgLinks = document.getElementById('svgLinks');
+            const svgPackets = document.getElementById('svgPackets');
+
+            svgNodes.innerHTML = '';
+            svgLinks.innerHTML = '';
+            svgPackets.innerHTML = '';
+
+            // 1. Draw Static Network Backbone Links
+            NETWORK_STATIC_LINKS.forEach(link => {
+                const source = findNode(link.from);
+                const target = findNode(link.to);
+                if (source && target) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', source.x); line.setAttribute('y1', source.y);
+                    line.setAttribute('x2', target.x); line.setAttribute('y2', target.y);
+                    line.setAttribute('stroke', '#e2e8f0');
+                    line.setAttribute('stroke-width', '2');
+                    svgLinks.appendChild(line);
+                }
+            });
+
+            // 2. Determine Active Dynamic Path based on Step & Client
+            let pathNodes = [];
+            let routerIsp = ROUTER_NODES.r_vn;
+            if (client.id === 'jp') routerIsp = ROUTER_NODES.r_jp;
+            if (client.id === 'uk') routerIsp = ROUTER_NODES.r_uk;
+            if (client.id === 'us') routerIsp = ROUTER_NODES.r_us;
+            if (client.id === 'au') routerIsp = ROUTER_NODES.r_au;
+
+            if (step.path.length > 0) {
+                step.path.forEach(pKey => {
+                    if (pKey === 'client') pathNodes.push(client);
+                    else if (pKey === 'router_isp') pathNodes.push(routerIsp);
+                    else if (pKey === 'target_pop') pathNodes.push(targetPop);
+                    else if (findNode(pKey)) pathNodes.push(findNode(pKey));
+                });
+            }
+
+            // Draw Active Path Highlight & Animate Packets
+            if (pathNodes.length >= 2) {
+                for (let i = 0; i < pathNodes.length - 1; i++) {
+                    const n1 = pathNodes[i];
+                    const n2 = pathNodes[i + 1];
+                    
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', n1.x); line.setAttribute('y1', n1.y);
+                    line.setAttribute('x2', n2.x); line.setAttribute('y2', n2.y);
+                    line.setAttribute('stroke', step.packetColor);
+                    line.setAttribute('stroke-width', '3.5');
+                    line.setAttribute('stroke-dasharray', '5,5');
+                    svgLinks.appendChild(line);
+
+                    // Animate Packets
+                    createSegmentPackets(n1, n2, step.packetColor);
+                }
+            }
+
+            // 3. Render All Topology Nodes
+            Object.values(CLIENT_NODES).forEach(node => renderNode(node, node.id === client.id));
+            Object.values(ROUTER_NODES).forEach(node => renderNode(node, pathNodes.some(pn => pn.id === node.id)));
+            Object.values(DNS_NODES).forEach(node => renderNode(node, pathNodes.some(pn => pn.id === node.id)));
+            Object.values(EDGE_POPS).forEach(node => renderNode(node, node.id === targetPop.id));
+            renderNode(ORIGIN_NODE, false);
+        }
+
+        function findNode(id) {
+            return CLIENT_NODES[id] || ROUTER_NODES[id] || DNS_NODES[id] || EDGE_POPS[id] || (id === 'origin' ? ORIGIN_NODE : null);
+        }
+
+        function createSegmentPackets(n1, n2, color) {
+            const svgPackets = document.getElementById('svgPackets');
+            for (let i = 0; i < 3; i++) {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('r', '5');
+                circle.setAttribute('fill', color);
+                circle.setAttribute('filter', 'url(#softGlow)');
+
+                const animMotion = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+                animMotion.setAttribute('path', `M ${n1.x} ${n1.y} L ${n2.x} ${n2.y}`);
+                animMotion.setAttribute('dur', '1.2s');
+                animMotion.setAttribute('repeatCount', 'indefinite');
+                animMotion.setAttribute('begin', `${i * 0.4}s`);
+
+                circle.appendChild(animMotion);
+                svgPackets.appendChild(circle);
+            }
+        }
+
+        function renderNode(node, isActive) {
+            const svgNodes = document.getElementById('svgNodes');
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+
+            const isOffline = (node.status === 'OFFLINE');
+
+            if (isActive && !isOffline) {
+                const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                ring.setAttribute('r', '26');
+                ring.setAttribute('fill', 'none');
+                ring.setAttribute('stroke', node.color);
+                ring.setAttribute('stroke-width', '2');
+                ring.setAttribute('class', 'active-node-ring');
+                g.appendChild(ring);
+            }
+
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('r', '20');
+            circle.setAttribute('fill', isOffline ? '#fee2e2' : '#ffffff');
+            circle.setAttribute('stroke', isOffline ? '#dc2626' : (isActive ? node.color : '#cbd5e1'));
+            circle.setAttribute('stroke-width', isActive ? '3' : '2');
+            circle.setAttribute('filter', isActive ? 'url(#softGlow)' : 'none');
+            g.appendChild(circle);
+
+            const foreignObj = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+            foreignObj.setAttribute('x', '-10'); foreignObj.setAttribute('y', '-10');
+            foreignObj.setAttribute('width', '20'); foreignObj.setAttribute('height', '20');
+            
+            const iconColor = isOffline ? '#dc2626' : node.color;
+            const iconClass = isOffline ? 'fa-triangle-exclamation' : node.icon;
+            foreignObj.innerHTML = `<div xmlns="http://www.w3.org/1999/xhtml" class="w-full h-full flex items-center justify-center"><i class="fa-solid ${iconClass} text-xs" style="color: ${iconColor}"></i></div>`;
+            g.appendChild(foreignObj);
+
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', '0'); text.setAttribute('y', '34');
+            text.setAttribute('fill', isOffline ? '#dc2626' : (isActive ? '#0f172a' : '#64748b'));
+            text.setAttribute('font-size', '9'); text.setAttribute('font-weight', '700');
+            text.setAttribute('text-anchor', 'middle');
+            text.textContent = isOffline ? `${node.name} (SẬP)` : node.name;
+            g.appendChild(text);
+
+            svgNodes.appendChild(g);
+        }
+
+        // =========================================================================
+        // CONTROLS & PLAYBACK
+        // =========================================================================
+        function nextStep() {
+            const sc = SCENARIOS[currentScenarioKey];
+            if (currentStepIndex < sc.steps.length - 1) renderStep(currentStepIndex + 1);
+            else stopAutoPlay();
+        }
+
+        function prevStep() { if (currentStepIndex > 0) renderStep(currentStepIndex - 1); }
+        function jumpToStep(idx) { renderStep(idx); }
+        function resetCurrentScenario() { stopAutoPlay(); renderStep(0); }
+
+        function toggleAutoPlay() {
+            if (isAutoPlaying) stopAutoPlay();
+            else startAutoPlay();
+        }
+
+        function startAutoPlay() {
+            isAutoPlaying = true;
+            document.getElementById('playIcon').className = 'fa-solid fa-pause';
+            document.getElementById('playText').innerText = 'Tạm dừng';
+
+            const sc = SCENARIOS[currentScenarioKey];
+            if (currentStepIndex >= sc.steps.length - 1) {
+                currentStepIndex = 0;
+                renderStep(0);
+            }
+
+            autoPlayTimer = setInterval(() => {
+                if (currentStepIndex < sc.steps.length - 1) nextStep();
+                else stopAutoPlay();
+            }, 3800);
+        }
+
+        function stopAutoPlay() {
+            isAutoPlaying = false;
+            if (autoPlayTimer) clearInterval(autoPlayTimer);
+            document.getElementById('playIcon').className = 'fa-solid fa-play';
+            document.getElementById('playText').innerText = 'Tự động chạy';
+        }
+
+        function markedSimple(str) {
+            return str.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-800 font-bold">$1</strong>');
+        }
+
+        // =========================================================================
+        // QUIZ SYSTEM
+        // =========================================================================
+        function renderQuiz() {
+            const container = document.getElementById('quizContainer');
+            container.innerHTML = '';
+
+            QUIZ_QUESTIONS.forEach((q, qIdx) => {
+                const qBox = document.createElement('div');
+                qBox.className = 'bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3';
+                
+                let optionsHtml = '';
+                q.options.forEach((opt, oIdx) => {
+                    optionsHtml += `
+                        <label class="flex items-start space-x-3 p-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 cursor-pointer transition text-xs text-slate-700 font-medium">
+                            <input type="radio" name="quiz_${qIdx}" value="${oIdx}" onchange="checkQuiz(${qIdx}, ${oIdx})" class="mt-0.5 accent-blue-600">
+                            <span>${opt}</span>
+                        </label>
+                    `;
+                });
+
+                qBox.innerHTML = `
+                    <p class="text-xs sm:text-sm font-bold text-slate-800">${qIdx + 1}. ${q.question}</p>
+                    <div class="space-y-2">${optionsHtml}</div>
+                    <div id="quizExplain_${qIdx}" class="hidden p-3 rounded-lg text-xs font-semibold"></div>
+                `;
+
+                container.appendChild(qBox);
+            });
+        }
+
+        function checkQuiz(qIdx, selectedOpt) {
+            quizAnswers[qIdx] = selectedOpt;
+            const q = QUIZ_QUESTIONS[qIdx];
+            const explainBox = document.getElementById(`quizExplain_${qIdx}`);
+            explainBox.classList.remove('hidden');
+
+            if (selectedOpt === q.correct) {
+                explainBox.className = 'p-3 rounded-lg text-xs font-semibold bg-emerald-100 border border-emerald-300 text-emerald-800';
+                explainBox.innerHTML = `<i class="fa-solid fa-circle-check mr-1.5"></i> Chính xác! ${q.explain}`;
+            } else {
+                explainBox.className = 'p-3 rounded-lg text-xs font-semibold bg-rose-100 border border-rose-300 text-rose-800';
+                explainBox.innerHTML = `<i class="fa-solid fa-circle-xmark mr-1.5"></i> Chưa chính xác. Hãy chọn lại đáp án khác!`;
+            }
+
+            let correctCount = 0;
+            Object.keys(quizAnswers).forEach(idx => {
+                if (quizAnswers[idx] === QUIZ_QUESTIONS[idx].correct) correctCount++;
+            });
+            document.getElementById('quizScore').innerText = `Điểm số: ${correctCount}/${QUIZ_QUESTIONS.length}`;
+        }
+    </script>
+</body>
+</html>
