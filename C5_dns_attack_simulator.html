@@ -262,7 +262,7 @@
                             <td class="p-3">Đánh cắp thông tin / Lừa đảo (Tính toàn vẹn - Integrity)</td>
                             <td class="p-3">Gửi truy vấn subdomains ngẫu nhiên, tràn ngập phản hồi giả đoán đúng ngẫu nhiên cả TxID (16-bit) và Source Port UDP (16-bit)</td>
                             <td class="p-3">Bộ nhớ đệm (Cache) của Recursive Resolver</td>
-                            <td class="p-3">Triển khai chữ ký số **DNSSEC**, ngẫu nhiên hóa Source Port (Kaminsky Patch), cập nhật Resolver software</td>
+                            <td class="p-3">Triển khai chữ ký số DNSSEC, ngẫu nhiên hóa Source Port (Kaminsky Patch), cập nhật Resolver software</td>
                         </tr>
                         <tr class="hover:bg-slate-50 transition">
                             <td class="p-3 font-bold text-purple-600">3. DNS Hijacking</td>
@@ -319,7 +319,7 @@
                 title: '1. Tấn Công Từ Chối Dịch Vụ (DoS / DDoS) & Khuếch Đại DNS',
                 badge: 'TẤN CÔNG BĂNG THÔNG',
                 badgeColor: 'bg-rose-100 text-rose-700 border-rose-300',
-                headerDesc: 'Tấn công khuếch đại DNS (DNS Amplification) khai thác các máy chủ **Open Resolver** mở công khai và kỹ thuật **giả mạo địa chỉ IP nguồn (IP Spoofing)**. Kẻ tấn công gửi truy vấn nhỏ (~60 bytes) nhưng yêu cầu phản hồi EDNS0 lớn (~3000+ bytes), làm dội một lưu lượng băng thông khổng lồ về máy chủ nạn nhân.',
+                headerDesc: 'Tấn công khuếch đại DNS (DNS Amplification) khai thác các máy chủ Open Resolver mở công khai và kỹ thuật giả mạo địa chỉ IP nguồn (IP Spoofing). Kẻ tấn công gửi truy vấn nhỏ (~60 bytes) nhưng yêu cầu phản hồi EDNS0 lớn (~3000+ bytes), làm dội một lưu lượng băng thông khổng lồ về máy chủ nạn nhân.',
                 nodes: [
                     { id: 'attacker', name: 'Kẻ Tấn Công / Botnet', icon: 'fa-user-ninja', color: '#dc2626', x: 120, y: 180, type: 'attacker' },
                     { id: 'resolver', name: 'Open DNS Resolver', icon: 'fa-server', color: '#2563eb', x: 450, y: 100, type: 'server' },
@@ -395,7 +395,7 @@
                 title: '2. Giả Mạo DNS & Đầu Độc Bộ Nhớ Đệm (Kaminsky Cache Poisoning)',
                 badge: 'TẤN CÔNG BỘ NHỚ ĐỆM',
                 badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
-                headerDesc: 'Kẻ tấn công chèn bản ghi IP giả mạo vào **bộ nhớ đệm (Cache)** của Recursive Resolver bằng kỹ thuật Kaminsky. Để vượt qua cơ chế bảo vệ, kẻ tấn công hỏi liên tục các **Subdomain ngẫu nhiên** kết hợp bắn hàng loạt câu trả lời giả nhằm đoán đúng cả **Transaction ID (16-bit)** và **Source Port UDP (16-bit)**.',
+                headerDesc: 'Kẻ tấn công chèn bản ghi IP giả mạo vào bộ nhớ đệm (Cache) của Recursive Resolver bằng kỹ thuật Kaminsky. Để vượt qua cơ chế bảo vệ, kẻ tấn công hỏi liên tục các Subdomain ngẫu nhiên kết hợp bắn hàng loạt câu trả lời giả nhằm đoán đúng cả Transaction ID (16-bit) và Source Port UDP (16-bit).',
                 nodes: [
                     { id: 'user', name: 'Người Dùng Hợp Lệ', icon: 'fa-laptop', color: '#2563eb', x: 120, y: 260, type: 'user' },
                     { id: 'resolver', name: 'Recursive Resolver', icon: 'fa-server', color: '#d97706', x: 450, y: 180, type: 'server' },
@@ -420,7 +420,7 @@
                     },
                     {
                         title: 'Bước 2: Resolver phát truy vấn ra Authoritative Server chính thức',
-                        desc: 'Resolver tạo một gói tin UDP DNS Query mới. Hệ thống tự động sinh ngẫu nhiên một mã **Transaction ID (TxID 16-bit: 0 - 65535)** và một **Source Port UDP (16-bit: 1024 - 65535)** cho phiên tra cứu này.',
+                        desc: 'Resolver tạo một gói tin UDP DNS Query mới. Hệ thống tự động sinh ngẫu nhiên một mã Transaction ID (TxID 16-bit: 0 - 65535) và một Source Port UDP (16-bit: 1024 - 65535) cho phiên tra cứu này.',
                         tech: 'Outgoing DNS Query: sub123.bank.com | Generated TxID: 0x8F2C (36652) | Source Port UDP: 52140',
                         activeNodes: ['resolver', 'auth'],
                         activeLinks: [{ from: 'resolver', to: 'auth', color: '#2563eb', pulse: true }],
@@ -466,7 +466,7 @@
                 title: '3. Chiếm Quyền Điều Khiển DNS (DNS Hijacking)',
                 badge: 'TẤN CÔNG CẤU HÌNH GỐC',
                 badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
-                headerDesc: 'Khác với Cache Poisoning (đoán gói tin), DNS Hijacking tấn công trực tiếp vào **quyền kiểm soát hệ thống**: Tài khoản nhà đăng ký tên miền (Registrar), Router Wi-Fi của người dùng, hoặc thay đổi bản ghi gốc trên máy chủ Nameserver chính thức.',
+                headerDesc: 'Khác với Cache Poisoning (đoán gói tin), DNS Hijacking tấn công trực tiếp vào quyền kiểm soát hệ thống: Tài khoản nhà đăng ký tên miền (Registrar), Router Wi-Fi của người dùng, hoặc thay đổi bản ghi gốc trên máy chủ Nameserver chính thức.',
                 nodes: [
                     { id: 'user', name: 'Người Dùng', icon: 'fa-laptop', color: '#2563eb', x: 120, y: 180, type: 'user' },
                     { id: 'router', name: 'Router Wi-Fi / Local DNS', icon: 'fa-wifi', color: '#9333ea', x: 450, y: 100, type: 'server' },
@@ -529,7 +529,7 @@
                 title: '4. Tạo Đường Hầm DNS (DNS Tunneling)',
                 badge: 'LẠM DỤNG GIAO THỨC',
                 badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-300',
-                headerDesc: 'DNS Tunneling lạm dụng giao thức DNS (vốn mặc định được cho phép qua Tường lửa UDP port 53) để **mã hóa và vận chuyển dữ liệu nhạy cảm** ra bên ngoài hoặc duy trì kênh điều khiển máy tính ma (C2 Server).',
+                headerDesc: 'DNS Tunneling lạm dụng giao thức DNS (vốn mặc định được cho phép qua Tường lửa UDP port 53) để mã hóa và vận chuyển dữ liệu nhạy cảm ra bên ngoài hoặc duy trì kênh điều khiển máy tính ma (C2 Server).',
                 nodes: [
                     { id: 'infected', name: 'Máy Trạm Bị Nhiễm Mã Độc', icon: 'fa-laptop-code', color: '#dc2626', x: 120, y: 180, type: 'attacker' },
                     { id: 'resolver', name: 'DNS Resolver Doanh Nghiệp', icon: 'fa-server', color: '#2563eb', x: 450, y: 180, type: 'server' },

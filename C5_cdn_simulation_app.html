@@ -259,8 +259,8 @@
                         </tr>
                         <tr class="hover:bg-slate-50 transition">
                             <td class="p-3 font-bold text-slate-800">Cơ Chế Địa Chỉ IP Edge POP</td>
-                            <td class="p-3">Mỗi POP sử dụng **IP Riêng Biệt (Unicast IP)**<br><code class="text-blue-600 font-mono font-bold">SG: 103.1.2.3 | JP: 103.1.2.4</code></td>
-                            <td class="p-3">Tất cả POP toàn cầu **Dùng chung 1 IP (VIP)**<br><code class="text-emerald-600 font-mono font-bold">Tất cả POPs = 104.16.1.1</code></td>
+                            <td class="p-3">Mỗi POP sử dụng IP Riêng Biệt (Unicast IP)<br><code class="text-blue-600 font-mono font-bold">SG: 103.1.2.3 | JP: 103.1.2.4</code></td>
+                            <td class="p-3">Tất cả POP toàn cầu Dùng chung 1 IP (VIP)<br><code class="text-emerald-600 font-mono font-bold">Tất cả POPs = 104.16.1.1</code></td>
                         </tr>
                         <tr class="hover:bg-slate-50 transition">
                             <td class="p-3 font-bold text-slate-800">Thành Phần Chọn Tuyến Đường</td>
@@ -366,7 +366,7 @@
                 title: '1. Định Tuyến GeoDNS (L7 DNS Level - IP Unicast Trả Về Khác Nhau)',
                 badge: 'DNS LEVEL ROUTING',
                 badgeColor: 'bg-blue-100 text-blue-700 border-blue-300',
-                headerDesc: 'GeoDNS hoạt động ở Tầng 7 (Ứng dụng - DNS). Authoritative Server kiểm tra IP Client/EDNS Subnet và **trả về địa chỉ IP KHÁC NHAU** trỏ tới các Edge POP tương ứng từng vùng địa lý.',
+                headerDesc: 'GeoDNS hoạt động ở Tầng 7 (Ứng dụng - DNS). Authoritative Server kiểm tra IP Client/EDNS Subnet và trả về địa chỉ IP KHÁC NHAU trỏ tới các Edge POP tương ứng từng vùng địa lý.',
                 steps: [
                     {
                         title: 'Bước 1: Client gửi DNS Query tới Local Resolver',
@@ -408,7 +408,7 @@
                 title: '2. Định Tuyến Anycast BGP (L3/L4 Network Level - Shared VIP 104.16.1.1)',
                 badge: 'NETWORK BGP ROUTING',
                 badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-                headerDesc: 'Anycast BGP hoạt động ở Tầng 3/4 (Mạng). **Tất cả các Edge POP toàn cầu ĐỀU DÙNG CHUNG 1 ĐỊA CHỈ IP (`104.16.1.1`)**. Các Router BGP trên Internet tự chọn tuyến BGP AS-Path ngắn nhất.',
+                headerDesc: 'Anycast BGP hoạt động ở Tầng 3/4 (Mạng). Tất cả các Edge POP toàn cầu ĐỀU DÙNG CHUNG 1 ĐỊA CHỈ IP (`104.16.1.1`). Các Router BGP trên Internet tự chọn tuyến BGP AS-Path ngắn nhất.',
                 steps: [
                     {
                         title: 'Bước 1: Tất cả Edge POPs quảng bá cùng 1 tuyến BGP Prefix (/24) ra Internet',
